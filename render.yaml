@@ -1,7 +1,7 @@
 services:
   - type: web
-    name: amertak-telegram-bot
+    name: amertak-bot
     env: node
-    buildCommand: npm install
-    startCommand: npm start
     plan: free
+    buildCommand: npm install
+    startCommand: node server.js

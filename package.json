@@ -1,5 +1,5 @@
 {
-  "name": "amertak-telegram-bot",
+  "name": "amertak-bot",
   "version": "1.0.0",
   "description": "Telegram Downloader Bot",
   "main": "server.js",

@@ -1,19 +1,48 @@
+process.on("uncaughtException", (err) => {
+    console.log("UNCAUGHT EXCEPTION:");
+    console.log(err);
+});
+
+process.on("unhandledRejection", (err) => {
+    console.log("UNHANDLED REJECTION:");
+    console.log(err);
+});
+
 const TelegramBot = require("node-telegram-bot-api");
 const express = require("express");
 const fs = require("fs");
 const ytdlp = require("yt-dlp-exec");
 
+// ========================
+// CHECK TOKEN
+// ========================
+
+if (!process.env.BOT_TOKEN) {
+    console.error("❌ BOT_TOKEN not found!");
+    process.exit(1);
+}
+
 const TOKEN = process.env.BOT_TOKEN;
 
-const bot = new TelegramBot(TOKEN, {
-    polling: true
-});
+// ========================
+// CREATE BOT
+// ========================
 
-const app = express();
+const bot = new TelegramBot(TOKEN, {
+    polling: {
+        interval: 300,
+        autoStart: true,
+        params: {
+            timeout: 10
+        }
+    }
+});
 
 // ========================
 // EXPRESS SERVER
 // ========================
+
+const app = express();
 
 app.get("/", (req, res) => {
     res.send("Amertak Telegram Bot Running!");
@@ -22,7 +51,7 @@ app.get("/", (req, res) => {
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
-    console.log("Server running on port " + PORT);
+    console.log("✅ Server running on port " + PORT);
 });
 
 // ========================
@@ -52,22 +81,18 @@ bot.onText(/\/start/, async (msg) => {
 • បង្កើតដោយ: @Amertak_Network
 `;
 
-    await bot.sendMessage(
-        msg.chat.id,
-        text,
-        {
-            reply_markup: {
-                inline_keyboard: [
-                    [
-                        {
-                            text: "❤️‍🔥 Donate ខ្ញុំ",
-                            callback_data: "donate_qr"
-                        }
-                    ]
+    await bot.sendMessage(chatId = msg.chat.id, text, {
+        reply_markup: {
+            inline_keyboard: [
+                [
+                    {
+                        text: "❤️‍🔥 Donate ខ្ញុំ",
+                        callback_data: "donate_qr"
+                    }
                 ]
-            }
+            ]
         }
-    );
+    });
 });
 
 // ========================
@@ -77,7 +102,7 @@ bot.onText(/\/start/, async (msg) => {
 bot.onText(/\/help/, async (msg) => {
 
     const text = `
-📌 ដើម្បីជាជំនួយដល់ការបប្រើប្រាស់ ${name} គប្បីមើលវិធីខាងក្រោម÷
+📌 របៀបប្រើប្រាស់
 
 🎬 ទាញយកវីដេអូ
 /video https://tiktok.com/example
@@ -115,26 +140,26 @@ bot.on("callback_query", async (query) => {
 
             await bot.sendMessage(
                 chatId,
-                `🎁 ${name} ចាំបន្តិចសិនណា ខ្ញុំកំពុង generate QrCode...`
+                `🎁 ${name} ចាំបន្តិចមិនណា...`
             );
 
-            const qrPath = "./image/qrcode.png";
+            const qrPath = "./image/gr.png";
 
-            // Check file exists
+            // CHECK FILE
             if (!fs.existsSync(qrPath)) {
 
                 return bot.sendMessage(
                     chatId,
-                    "❌ មិនអាចបង្កើត QR Code បានទេ"
+                    "❌ មិនអាចរកឃើញ QR Code បានទេ"
                 );
             }
 
-            // Send QR Code
+            // SEND QR
             await bot.sendPhoto(
                 chatId,
                 fs.createReadStream(qrPath),
                 {
-                    caption: "🎉 អរគុណសម្រាប់ការឧបត្ថម្ភ"
+                    caption: "❤️ អរគុណសម្រាប់ការឧបត្ថម្ភ"
                 }
             );
 
@@ -144,7 +169,7 @@ bot.on("callback_query", async (query) => {
 
             await bot.sendMessage(
                 chatId,
-                "❌ មិនអាចបង្កើត QR Code បានទេ!"
+                "❌ មិនអាចផ្ញើ QR Code បានទេ"
             );
         }
     }
@@ -183,7 +208,10 @@ bot.onText(/\/video (.+)/, async (msg, match) => {
             fs.createReadStream(file)
         );
 
-        fs.unlinkSync(file);
+        // DELETE FILE
+        if (fs.existsSync(file)) {
+            fs.unlinkSync(file);
+        }
 
     } catch (err) {
 
@@ -230,7 +258,10 @@ bot.onText(/\/mp3 (.+)/, async (msg, match) => {
             fs.createReadStream(file)
         );
 
-        fs.unlinkSync(file);
+        // DELETE FILE
+        if (fs.existsSync(file)) {
+            fs.unlinkSync(file);
+        }
 
     } catch (err) {
 
@@ -275,7 +306,10 @@ bot.onText(/\/photo (.+)/, async (msg, match) => {
             fs.createReadStream(file)
         );
 
-        fs.unlinkSync(file);
+        // DELETE FILE
+        if (fs.existsSync(file)) {
+            fs.unlinkSync(file);
+        }
 
     } catch (err) {
 
@@ -287,3 +321,5 @@ bot.onText(/\/photo (.+)/, async (msg, match) => {
         );
     }
 });
+
+console.log("✅ Telegram Bot Started");
