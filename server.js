@@ -86,7 +86,7 @@ bot.onText(/\/start/, async (msg) => {
             inline_keyboard: [
                 [
                     {
-                        text: "❤️‍🔥 Donate ខ្ញុំ",
+                        text: "🎁 Donate ខ្ញុំ",
                         callback_data: "donate_qr"
                     }
                 ]
