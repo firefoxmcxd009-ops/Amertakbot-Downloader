@@ -118,7 +118,7 @@ bot.on("callback_query", async (query) => {
                 `🎁 ${name} ចាំបន្តិចសិនណា ខ្ញុំកំពុង generate QrCode...`
             );
 
-            const qrPath = "./image/gr.png";
+            const qrPath = "./image/qrcode.png";
 
             // Check file exists
             if (!fs.existsSync(qrPath)) {
@@ -144,7 +144,7 @@ bot.on("callback_query", async (query) => {
 
             await bot.sendMessage(
                 chatId,
-                "❌ មិនអាចបង្កើត QR Code បានទេ"
+                "❌ មិនអាចបង្កើត QR Code បានទេ!"
             );
         }
     }
