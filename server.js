@@ -143,7 +143,7 @@ bot.on("callback_query", async (query) => {
                 `🎁 ${name} ចាំបន្តិចសិនណា...`
             );
 
-            const qrPath = "./image/qr.png";
+            const qrPath = "./image/qrcode.png";
 
             // CHECK FILE
             if (!fs.existsSync(qrPath)) {
