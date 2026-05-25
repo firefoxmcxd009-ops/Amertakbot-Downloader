@@ -77,7 +77,7 @@ bot.onText(/\/start/, async (msg) => {
 bot.onText(/\/help/, async (msg) => {
 
     const text = `
-📌 របៀបប្រើប្រាស់
+📌 ដើម្បីជាជំនួយដល់ការបប្រើប្រាស់ ${name} គប្បីមើលវិធីខាងក្រោម÷
 
 🎬 ទាញយកវីដេអូ
 /video https://tiktok.com/example
@@ -125,7 +125,7 @@ bot.on("callback_query", async (query) => {
 
                 return bot.sendMessage(
                     chatId,
-                    "❌ មិនអាចរកឃើញ QR Code បានទេ"
+                    "❌ មិនអាចបង្កើត QR Code បានទេ"
                 );
             }
 
