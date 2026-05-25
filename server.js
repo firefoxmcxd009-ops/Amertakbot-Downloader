@@ -1,7 +1,6 @@
 const TelegramBot = require("node-telegram-bot-api");
 const express = require("express");
 const fs = require("fs");
-const path = require("path");
 const ytdlp = require("yt-dlp-exec");
 
 const TOKEN = process.env.BOT_TOKEN;
@@ -11,6 +10,10 @@ const bot = new TelegramBot(TOKEN, {
 });
 
 const app = express();
+
+// ========================
+// EXPRESS SERVER
+// ========================
 
 app.get("/", (req, res) => {
     res.send("Amertak Telegram Bot Running!");
@@ -26,7 +29,7 @@ app.listen(PORT, () => {
 // START COMMAND
 // ========================
 
-bot.onText(/\/start/, (msg) => {
+bot.onText(/\/start/, async (msg) => {
 
     const firstName = msg.from.first_name || "";
     const lastName = msg.from.last_name || "";
@@ -40,7 +43,7 @@ bot.onText(/\/start/, (msg) => {
 
 /video (YourLink) - ទាញយកវីដេអូ
 
-/mp3 (yourLink) - ទាញយកចម្រៀង mp3
+/mp3 (YourLink) - ទាញយកចម្រៀង mp3
 
 /photo (YourLink) - ទាញយករូបភាព
 
@@ -49,18 +52,46 @@ bot.onText(/\/start/, (msg) => {
 • បង្កើតដោយ: @Amertak_Network
 `;
 
-    bot.sendMessage(msg.chat.id, text, {
-        reply_markup: {
-            inline_keyboard: [
-                [
-                    {
-                        text: "❤️‍🔥 Donate ខ្ញុំ",
-                        callback_data: "donate_qr"
-                    }
+    await bot.sendMessage(
+        msg.chat.id,
+        text,
+        {
+            reply_markup: {
+                inline_keyboard: [
+                    [
+                        {
+                            text: "❤️‍🔥 Donate ខ្ញុំ",
+                            callback_data: "donate_qr"
+                        }
+                    ]
                 ]
-            ]
+            }
         }
-    });
+    );
+});
+
+// ========================
+// HELP COMMAND
+// ========================
+
+bot.onText(/\/help/, async (msg) => {
+
+    const text = `
+📌 របៀបប្រើប្រាស់
+
+🎬 ទាញយកវីដេអូ
+/video https://tiktok.com/example
+
+🎵 ទាញយក MP3
+/mp3 https://youtube.com/example
+
+🖼 ទាញយករូបភាព
+/photo https://instagram.com/example
+
+⚠️ សូមដាក់ Link ឲ្យត្រឹមត្រូវ
+`;
+
+    await bot.sendMessage(msg.chat.id, text);
 });
 
 // ========================
@@ -84,49 +115,39 @@ bot.on("callback_query", async (query) => {
 
             await bot.sendMessage(
                 chatId,
-                `🎁 ${name} ចាំបន្តិចមិនណា...`
+                `🎁 ${name} ចាំបប្តិចសិនណា...`
             );
 
-            const qrPath = path.join(__dirname, "image", "grcode.png");
+            const qrPath = "./image/gr.png";
 
-            await bot.sendPhoto(chatId, qrPath, {
-                caption: "❤️ អរគុណសម្រាប់ការឧបត្ថម្ភ"
-            });
+            // Check file exists
+            if (!fs.existsSync(qrPath)) {
+
+                return bot.sendMessage(
+                    chatId,
+                    "❌ មិនអាចរកឃើញ QR Code បានទេ"
+                );
+            }
+
+            // Send QR Code
+            await bot.sendPhoto(
+                chatId,
+                fs.createReadStream(qrPath),
+                {
+                    caption: "❤️ អរគុណសម្រាប់ការឧបត្ថម្ភ"
+                }
+            );
 
         } catch (err) {
 
             console.log(err);
 
-            bot.sendMessage(
+            await bot.sendMessage(
                 chatId,
                 "❌ មិនអាចផ្ញើ QR Code បានទេ"
             );
         }
     }
-});
-
-// ========================
-// HELP COMMAND
-// ========================
-
-bot.onText(/\/help/, (msg) => {
-
-    const text = `
-📌 របៀបប្រើប្រាស់
-
-🎬 ទាញយកវីដេអូ
-/video https://TikTok.com/example
-
-🎵 ទាញយក MP3
-/mp3 https://youtube.com/example
-
-🖼 ទាញយករូបភាព
-/photo https://instagram.com/example
-
-⚠️ សូមដាក់ Link ឲ្យត្រឹមត្រូវ
-`;
-
-    bot.sendMessage(msg.chat.id, text);
 });
 
 // ========================
@@ -145,7 +166,10 @@ bot.onText(/\/video (.+)/, async (msg, match) => {
 
     try {
 
-        bot.sendMessage(chatId, "⏳ កំពុងទាញយកវីដេអូ...");
+        await bot.sendMessage(
+            chatId,
+            "⏳ កំពុងទាញយកវីដេអូ..."
+        );
 
         const file = `video_${Date.now()}.mp4`;
 
@@ -154,7 +178,10 @@ bot.onText(/\/video (.+)/, async (msg, match) => {
             format: "mp4"
         });
 
-        await bot.sendVideo(chatId, file);
+        await bot.sendVideo(
+            chatId,
+            fs.createReadStream(file)
+        );
 
         fs.unlinkSync(file);
 
@@ -162,7 +189,7 @@ bot.onText(/\/video (.+)/, async (msg, match) => {
 
         console.log(err);
 
-        bot.sendMessage(
+        await bot.sendMessage(
             chatId,
             `Sorry ${name} រកមិនឃើញតំណលីងទេ ;(`
         );
@@ -185,7 +212,10 @@ bot.onText(/\/mp3 (.+)/, async (msg, match) => {
 
     try {
 
-        bot.sendMessage(chatId, "⏳ កំពុងទាញយក MP3...");
+        await bot.sendMessage(
+            chatId,
+            "⏳ កំពុងទាញយក MP3..."
+        );
 
         const file = `audio_${Date.now()}.mp3`;
 
@@ -195,7 +225,10 @@ bot.onText(/\/mp3 (.+)/, async (msg, match) => {
             output: file
         });
 
-        await bot.sendAudio(chatId, file);
+        await bot.sendAudio(
+            chatId,
+            fs.createReadStream(file)
+        );
 
         fs.unlinkSync(file);
 
@@ -203,7 +236,7 @@ bot.onText(/\/mp3 (.+)/, async (msg, match) => {
 
         console.log(err);
 
-        bot.sendMessage(
+        await bot.sendMessage(
             chatId,
             `Sorry ${name} រកមិនឃើញតំណលីងទេ ;(`
         );
@@ -226,7 +259,10 @@ bot.onText(/\/photo (.+)/, async (msg, match) => {
 
     try {
 
-        bot.sendMessage(chatId, "⏳ កំពុងទាញយករូបភាព...");
+        await bot.sendMessage(
+            chatId,
+            "⏳ កំពុងទាញយករូបភាព..."
+        );
 
         const file = `photo_${Date.now()}.jpg`;
 
@@ -234,7 +270,10 @@ bot.onText(/\/photo (.+)/, async (msg, match) => {
             output: file
         });
 
-        await bot.sendPhoto(chatId, file);
+        await bot.sendPhoto(
+            chatId,
+            fs.createReadStream(file)
+        );
 
         fs.unlinkSync(file);
 
@@ -242,7 +281,7 @@ bot.onText(/\/photo (.+)/, async (msg, match) => {
 
         console.log(err);
 
-        bot.sendMessage(
+        await bot.sendMessage(
             chatId,
             `Sorry ${name} រកមិនឃើញតំណលីងទេ ;(`
         );
