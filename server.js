@@ -115,7 +115,7 @@ bot.on("callback_query", async (query) => {
 
             await bot.sendMessage(
                 chatId,
-                `🎁 ${name} ចាំបប្តិចសិនណា...`
+                `🎁 ${name} ចាំបន្តិចសិនណា ខ្ញុំកំពុង generate QrCode...`
             );
 
             const qrPath = "./image/gr.png";
