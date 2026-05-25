@@ -87,7 +87,7 @@ bot.on("callback_query", async (query) => {
                 `🎁 ${name} ចាំបន្តិចមិនណា...`
             );
 
-            const qrPath = path.join(__dirname, "image", "gr.png");
+            const qrPath = path.join(__dirname, "image", "grcode.png");
 
             await bot.sendPhoto(chatId, qrPath, {
                 caption: "❤️ អរគុណសម្រាប់ការឧបត្ថម្ភ"
