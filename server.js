@@ -35,6 +35,7 @@ bot.onText(/\/start/, (msg) => {
 
     const text = `
 សួរស្តី ${name} មកកាន់ Amertak Downloader!
+
 នេះជា command សម្រាប់ប្រើ÷
 
 /video (YourLink) - ទាញយកវីដេអូ
@@ -48,7 +49,60 @@ bot.onText(/\/start/, (msg) => {
 • បង្កើតដោយ: @Amertak_Network
 `;
 
-    bot.sendMessage(msg.chat.id, text);
+    bot.sendMessage(msg.chat.id, text, {
+        reply_markup: {
+            inline_keyboard: [
+                [
+                    {
+                        text: "❤️‍🔥 Donate ខ្ញុំ",
+                        callback_data: "donate_qr"
+                    }
+                ]
+            ]
+        }
+    });
+});
+
+// ========================
+// DONATE BUTTON
+// ========================
+
+bot.on("callback_query", async (query) => {
+
+    const chatId = query.message.chat.id;
+
+    const firstName = query.from.first_name || "";
+    const lastName = query.from.last_name || "";
+
+    const name = `${firstName} ${lastName}`.trim();
+
+    if (query.data === "donate_qr") {
+
+        try {
+
+            await bot.answerCallbackQuery(query.id);
+
+            await bot.sendMessage(
+                chatId,
+                `🎁 ${name} ចាំបន្តិចមិនណា...`
+            );
+
+            const qrPath = path.join(__dirname, "image", "gr.png");
+
+            await bot.sendPhoto(chatId, qrPath, {
+                caption: "❤️ អរគុណសម្រាប់ការឧបត្ថម្ភ"
+            });
+
+        } catch (err) {
+
+            console.log(err);
+
+            bot.sendMessage(
+                chatId,
+                "❌ មិនអាចផ្ញើ QR Code បានទេ"
+            );
+        }
+    }
 });
 
 // ========================
@@ -83,7 +137,11 @@ bot.onText(/\/video (.+)/, async (msg, match) => {
 
     const chatId = msg.chat.id;
     const link = match[1];
-    const name = msg.from.first_name;
+
+    const firstName = msg.from.first_name || "";
+    const lastName = msg.from.last_name || "";
+
+    const name = `${firstName} ${lastName}`.trim();
 
     try {
 
@@ -119,7 +177,11 @@ bot.onText(/\/mp3 (.+)/, async (msg, match) => {
 
     const chatId = msg.chat.id;
     const link = match[1];
-    const name = msg.from.first_name;
+
+    const firstName = msg.from.first_name || "";
+    const lastName = msg.from.last_name || "";
+
+    const name = `${firstName} ${lastName}`.trim();
 
     try {
 
@@ -156,7 +218,11 @@ bot.onText(/\/photo (.+)/, async (msg, match) => {
 
     const chatId = msg.chat.id;
     const link = match[1];
-    const name = msg.from.first_name;
+
+    const firstName = msg.from.first_name || "";
+    const lastName = msg.from.last_name || "";
+
+    const name = `${firstName} ${lastName}`.trim();
 
     try {
 
