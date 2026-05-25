@@ -134,7 +134,7 @@ bot.on("callback_query", async (query) => {
                 chatId,
                 fs.createReadStream(qrPath),
                 {
-                    caption: "❤️ អរគុណសម្រាប់ការឧបត្ថម្ភ"
+                    caption: "🎉 អរគុណសម្រាប់ការឧបត្ថម្ភ"
                 }
             );
 
@@ -144,7 +144,7 @@ bot.on("callback_query", async (query) => {
 
             await bot.sendMessage(
                 chatId,
-                "❌ មិនអាចផ្ញើ QR Code បានទេ"
+                "❌ មិនអាចបង្កើត QR Code បានទេ"
             );
         }
     }
