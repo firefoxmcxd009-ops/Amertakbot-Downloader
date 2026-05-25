@@ -140,7 +140,7 @@ bot.on("callback_query", async (query) => {
 
             await bot.sendMessage(
                 chatId,
-                `🎁 ${name} ចាំបន្តិចមិនណា...`
+                `🎁 ${name} ចាំបន្តិចសិនណា...`
             );
 
             const qrPath = "./image/qr.png";
@@ -159,7 +159,7 @@ bot.on("callback_query", async (query) => {
                 chatId,
                 fs.createReadStream(qrPath),
                 {
-                    caption: "❤️ អរគុណសម្រាប់ការឧបត្ថម្ភ"
+                    caption: "🎉 អរគុណសម្រាប់ការឧបត្ថម្ភ"
                 }
             );
 
@@ -219,7 +219,7 @@ bot.onText(/\/video (.+)/, async (msg, match) => {
 
         await bot.sendMessage(
             chatId,
-            `Sorry ${name} រកមិនឃើញតំណលីងទេ ;(`
+            `Sorry ${name} រកមិនឃើញតំណលីងទេ 💔🥀`
         );
     }
 });
@@ -269,7 +269,7 @@ bot.onText(/\/mp3 (.+)/, async (msg, match) => {
 
         await bot.sendMessage(
             chatId,
-            `Sorry ${name} រកមិនឃើញតំណលីងទេ ;(`
+            `Sorry ${name} រកមិនឃើញតំណលីងទេ 💔🥀`
         );
     }
 });
@@ -317,7 +317,7 @@ bot.onText(/\/photo (.+)/, async (msg, match) => {
 
         await bot.sendMessage(
             chatId,
-            `Sorry ${name} រកមិនឃើញតំណលីងទេ ;(`
+            `Sorry ${name} រកមិនឃើញតំណលីងទេ 💔🥀`
         );
     }
 });
