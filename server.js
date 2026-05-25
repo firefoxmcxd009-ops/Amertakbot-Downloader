@@ -28,11 +28,13 @@ app.listen(PORT, () => {
 
 bot.onText(/\/start/, (msg) => {
 
-    const name = msg.from.first_name;
+    const firstName = msg.from.first_name || "";
+    const lastName = msg.from.last_name || "";
+
+    const name = `${firstName} ${lastName}`.trim();
 
     const text = `
-សួរស្តី ${name} មកកាន់ Amertak!
-
+សួរស្តី ${name} មកកាន់ Amertak Downloader!
 នេះជា command សម្រាប់ប្រើ÷
 
 /video (YourLink) - ទាញយកវីដេអូ
