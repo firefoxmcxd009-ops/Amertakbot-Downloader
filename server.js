@@ -265,6 +265,9 @@ bot.onText(/\/start/, async (msg) => {
     const text = `
 សួរស្តី ${name} មកកាន់ Amertak Downloader!
 
+🆔 Your Telegram ID:
+${chatId}
+
 នេះជា command សម្រាប់ប្រើ÷
 
 /video (YourLink)
