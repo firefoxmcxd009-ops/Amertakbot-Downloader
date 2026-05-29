@@ -88,6 +88,9 @@ bot.onText(/\/start/, async (msg) => {
                     {
                         text: "🎁 Donate ខ្ញុំ",
                         callback_data: "donate_qr"
+                    },
+                    {
+                        text: "💌 ទាក់ទងខ្ញុំ"
                     }
                 ]
             ]
@@ -116,7 +119,22 @@ bot.onText(/\/help/, async (msg) => {
 ⚠️ សូមដាក់ Link ឲ្យត្រឹមត្រូវ
 `;
 
-    await bot.sendMessage(msg.chat.id, text);
+    await bot.sendMessage(chatId = msg.chat.id, text, {
+        reply_markup: {
+            inline_keyboard: [
+                [
+                    {
+                        text: "🎁 Donate ខ្ញុំ",
+                        callback_data: "donate_qr"
+                    },
+                    {
+                        text: "💌 ទាក់ទងខ្ញុំ"
+                        callback_data: "contact"
+                    }
+                ]
+            ]
+        }
+    });
 });
 
 // ========================
