@@ -191,11 +191,6 @@ bot.on("callback_query", async (query) => {
             );
         }
     }
-    
-    if(query.data === "contact") {
-        await bot.answerCallbackQuery(query.id);
-        await bot.sendMessage(chatId, `[Amertak Network](https://t.me/@Amertak_Network)`)
-    }
 });
 
 // ========================
