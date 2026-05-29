@@ -128,7 +128,7 @@ bot.onText(/\/help/, async (msg) => {
                         callback_data: "donate_qr"
                     },
                     {
-                        text: "💌 ទាក់ទងខ្ញុំ"
+                        text: "💌 ទាក់ទងខ្ញុំ",
                         callback_data: "contact"
                     }
                 ]
