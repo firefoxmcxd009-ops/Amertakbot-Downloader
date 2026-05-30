@@ -1,33 +1,64 @@
 process.on("uncaughtException", (err) => {
+
     console.log("UNCAUGHT EXCEPTION:");
     console.log(err);
+
 });
 
 process.on("unhandledRejection", (err) => {
+
     console.log("UNHANDLED REJECTION:");
     console.log(err);
+
 });
 
-const TelegramBot = require("node-telegram-bot-api");
-const express = require("express");
-const fs = require("fs");
-const ytdlp = require("yt-dlp-exec");
+
+
+const TelegramBot =
+require("node-telegram-bot-api");
+
+const express =
+require("express");
+
+const fs =
+require("fs");
+
+const path =
+require("path");
+
+const ytdlp =
+require("yt-dlp-exec");
 
 
 
 // ========================
-// CHECK TOKEN
+// CHECK ENV
 // ========================
 
 if (!process.env.BOT_TOKEN) {
 
-    console.error("❌ BOT_TOKEN not found!");
+    console.error(
+        "❌ BOT_TOKEN not found!"
+    );
 
     process.exit(1);
 
 }
 
-const TOKEN = process.env.BOT_TOKEN;
+if (!process.env.OWNER_ID) {
+
+    console.error(
+        "❌ OWNER_ID not found!"
+    );
+
+    process.exit(1);
+
+}
+
+
+
+const TOKEN =
+process.env.BOT_TOKEN;
 
 const OWNER_ID =
 String(process.env.OWNER_ID);
@@ -38,13 +69,14 @@ String(process.env.OWNER_ID);
 // CREATE BOT
 // ========================
 
-const bot = new TelegramBot(TOKEN, {
+const bot =
+new TelegramBot(TOKEN, {
 
     polling: {
 
-        interval: 300,
-
         autoStart: true,
+
+        interval: 300,
 
         params: {
 
@@ -56,9 +88,17 @@ const bot = new TelegramBot(TOKEN, {
 
 });
 
+
+
 // REMOVE OLD WEBHOOK
 bot.deleteWebHook()
 .catch(console.log);
+
+
+
+console.log(
+    "✅ Telegram Bot Started"
+);
 
 
 
@@ -90,14 +130,35 @@ app.listen(PORT, () => {
 
 
 // ========================
+// CREATE DATA FOLDER
+// ========================
+
+const dataFolder =
+"./data";
+
+if (!fs.existsSync(dataFolder)) {
+
+    fs.mkdirSync(dataFolder);
+
+}
+
+
+
+// ========================
 // DATABASE FILES
 // ========================
 
 const USERS_FILE =
-"./users.json";
+path.join(
+    dataFolder,
+    "users.json"
+);
 
 const UPDATE_FILE =
-"./update.json";
+path.join(
+    dataFolder,
+    "update.json"
+);
 
 
 
@@ -121,7 +182,9 @@ if (!fs.existsSync(UPDATE_FILE)) {
         UPDATE_FILE,
 
         JSON.stringify({
+
             updating: false
+
         })
 
     );
@@ -136,13 +199,23 @@ if (!fs.existsSync(UPDATE_FILE)) {
 
 function getUsers() {
 
-    return JSON.parse(
+    try {
 
-        fs.readFileSync(
-            USERS_FILE
-        )
+        return JSON.parse(
 
-    );
+            fs.readFileSync(
+                USERS_FILE
+            )
+
+        );
+
+    }
+
+    catch {
+
+        return [];
+
+    }
 
 }
 
@@ -154,28 +227,61 @@ function getUsers() {
 
 function saveUser(id) {
 
-    let users =
-    getUsers();
+    try {
 
-    if (!users.includes(id)) {
+        id = String(id);
 
-        users.push(id);
+        let users =
+        getUsers();
 
-        fs.writeFileSync(
+        if (!users.includes(id)) {
 
-            USERS_FILE,
+            users.push(id);
 
-            JSON.stringify(
-                users,
-                null,
-                2
-            )
+            fs.writeFileSync(
 
-        );
+                USERS_FILE,
+
+                JSON.stringify(
+                    users,
+                    null,
+                    2
+                )
+
+            );
+
+            console.log(
+                "✅ New User:",
+                id
+            );
+
+        }
+
+    }
+
+    catch (err) {
+
+        console.log(err);
 
     }
 
 }
+
+
+
+// ========================
+// AUTO SAVE USERS
+// ========================
+
+bot.on("message", (msg) => {
+
+    if (msg.chat?.id) {
+
+        saveUser(msg.chat.id);
+
+    }
+
+});
 
 
 
@@ -185,18 +291,30 @@ function saveUser(id) {
 
 function isUpdating() {
 
-    const data =
-    JSON.parse(
+    try {
 
-        fs.readFileSync(
-            UPDATE_FILE
-        )
+        const data =
+        JSON.parse(
 
-    );
+            fs.readFileSync(
+                UPDATE_FILE
+            )
 
-    return data.updating;
+        );
+
+        return data.updating;
+
+    }
+
+    catch {
+
+        return false;
+
+    }
 
 }
+
+
 
 function setUpdating(value) {
 
@@ -236,10 +354,10 @@ async function broadcast(text) {
 
         }
 
-        catch (err) {
+        catch {
 
             console.log(
-                "Broadcast error:",
+                "Broadcast failed:",
                 id
             );
 
@@ -252,7 +370,7 @@ async function broadcast(text) {
 
 
 // ========================
-// BLOCK COMMANDS
+// CHECK UPDATE MODE
 // ========================
 
 async function checkUpdate(chatId) {
@@ -263,7 +381,7 @@ async function checkUpdate(chatId) {
 
             chatId,
 
-`⚠️ Bot កំពុង update
+`⚠️ Bot កំពុង Update
 
 សូមរង់ចាំបន្តិច ❤️`
 
@@ -280,15 +398,13 @@ async function checkUpdate(chatId) {
 
 
 // ========================
-// START COMMAND
+// START
 // ========================
 
 bot.onText(/\/start/, async (msg) => {
 
     const chatId =
     msg.chat.id;
-
-    saveUser(chatId);
 
     const firstName =
     msg.from.first_name || "";
@@ -299,29 +415,23 @@ bot.onText(/\/start/, async (msg) => {
     const name =
     `${firstName} ${lastName}`.trim();
 
-    const text = `
-សួរស្តី ${name} មកកាន់ Amertak Downloader!
+    const text =
 
-🆔 Your Telegram ID:
-${chatId}
+`សួរស្តី ${name}
 
-នេះជា command សម្រាប់ប្រើ÷
+ស្វាគមន៍មកកាន់
+Amertak Downloader ❤️
 
-/video (YourLink)
+Commands:
 
-/mp3 (YourLink)
-
-/photo (YourLink)
-
-/help
-
-• បង្កើតដោយ:
-@Amertak_Network
-`;
+/video LINK
+/mp3 LINK
+/photo LINK
+/help`;
 
     await bot.sendMessage(
 
-        msg.chat.id,
+        chatId,
 
         text,
 
@@ -336,7 +446,7 @@ ${chatId}
                         {
 
                             text:
-                            "🎁 Donate ខ្ញុំ",
+                            "🎁 Donate",
 
                             callback_data:
                             "donate_qr"
@@ -358,32 +468,21 @@ ${chatId}
 
 
 // ========================
-// HELP COMMAND
+// HELP
 // ========================
 
 bot.onText(/\/help/, async (msg) => {
 
-    const chatId =
-    msg.chat.id;
-
-    saveUser(chatId);
-
-    const text = `
-📌 របៀបប្រើប្រាស់
-
-🎬 ទាញយកវីដេអូ
-/video LINK
-
-🎵 ទាញយក MP3
-/mp3 LINK
-
-🖼 ទាញយករូបភាព
-/photo LINK
-`;
-
     await bot.sendMessage(
-        chatId,
-        text
+
+        msg.chat.id,
+
+`📌 Commands
+
+/video LINK
+/mp3 LINK
+/photo LINK`
+
     );
 
 });
@@ -391,7 +490,7 @@ bot.onText(/\/help/, async (msg) => {
 
 
 // ========================
-// OWNER UPDATE COMMAND
+// OWNER UPDATE
 // ========================
 
 bot.onText(/\/update/, async (msg) => {
@@ -405,7 +504,7 @@ bot.onText(/\/update/, async (msg) => {
 
             msg.chat.id,
 
-            "❌ Owner only command"
+            "❌ Owner only"
 
         );
 
@@ -415,9 +514,9 @@ bot.onText(/\/update/, async (msg) => {
 
     await broadcast(
 
-`⚠️ នៅពេលនេះ bot កំពុងធ្វើការ update ដូចនេះអ្នកនឹងមិនទាន់អាចប្រើប្រាស់បានទេ!
+`⚠️ Bot កំពុង Update
 
-សូមអរគុណ ❤️`
+សូមរង់ចាំ ❤️`
 
     );
 
@@ -425,7 +524,7 @@ bot.onText(/\/update/, async (msg) => {
 
         msg.chat.id,
 
-        "✅ Update mode enabled"
+        "✅ Update mode ON"
 
     );
 
@@ -434,7 +533,7 @@ bot.onText(/\/update/, async (msg) => {
 
 
 // ========================
-// OWNER UPDATED COMMAND
+// OWNER UPDATED
 // ========================
 
 bot.onText(/\/updated/, async (msg) => {
@@ -448,7 +547,7 @@ bot.onText(/\/updated/, async (msg) => {
 
             msg.chat.id,
 
-            "❌ Owner only command"
+            "❌ Owner only"
 
         );
 
@@ -458,9 +557,7 @@ bot.onText(/\/updated/, async (msg) => {
 
     await broadcast(
 
-`✅ Bot បាន update រួចរាល់!
-
-ឥឡូវអ្នកអាចប្រើប្រាស់ bot បានវិញហើយ ❤️`
+`✅ Bot បាន Update រួចរាល់ ❤️`
 
     );
 
@@ -468,7 +565,7 @@ bot.onText(/\/updated/, async (msg) => {
 
         msg.chat.id,
 
-        "✅ Update mode disabled"
+        "✅ Update mode OFF"
 
     );
 
@@ -477,7 +574,7 @@ bot.onText(/\/updated/, async (msg) => {
 
 
 // ========================
-// OWNER USER LIST
+// USER LIST
 // ========================
 
 bot.onText(/\/list/, async (msg) => {
@@ -491,153 +588,161 @@ bot.onText(/\/list/, async (msg) => {
 
             msg.chat.id,
 
-            "❌ Owner only command"
+            "❌ Owner only"
 
         );
 
     }
 
+    const users =
+    getUsers();
+
+    await bot.sendMessage(
+
+        msg.chat.id,
+
+        `👥 Total Users: ${users.length}`
+
+    );
+
+});
+
+
+
+// ========================
+// DOWNLOAD FUNCTION
+// ========================
+
+async function downloadMedia(
+
+    chatId,
+    link,
+    type
+
+) {
+
     try {
 
-        const users =
-        getUsers();
+        if (
+            await checkUpdate(chatId)
+        ) return;
 
-        if (users.length === 0) {
 
-            return bot.sendMessage(
 
-                msg.chat.id,
+        let file = "";
 
-                "❌ No users found"
+
+
+        if (type === "video") {
+
+            file =
+            `video_${Date.now()}.mp4`;
+
+            await bot.sendMessage(
+
+                chatId,
+
+                "⏳ Downloading video..."
+
+            );
+
+
+
+            await ytdlp(link, {
+
+                output: file,
+
+                format: "mp4"
+
+            });
+
+
+
+            await bot.sendVideo(
+
+                chatId,
+
+                fs.createReadStream(file)
 
             );
 
         }
 
-        let text =
-`Total User: ${users.length}
 
-`;
 
-        for (const id of users) {
+        if (type === "mp3") {
 
-            try {
+            file =
+            `audio_${Date.now()}.mp3`;
 
-                const chat =
-                await bot.getChat(id);
+            await bot.sendMessage(
 
-                const firstName =
-                chat.first_name || "";
+                chatId,
 
-                const lastName =
-                chat.last_name || "";
+                "⏳ Downloading mp3..."
 
-                const fullName =
-                `${firstName} ${lastName}`.trim();
+            );
 
-                const username =
-                chat.username
-                ?
-                `@${chat.username}`
-                :
-                "none";
 
-                text +=
 
-`- (${fullName})[${username}] - id: ${id}
+            await ytdlp(link, {
 
-`;
+                extractAudio: true,
 
-            }
+                audioFormat: "mp3",
 
-            catch (err) {
+                output: file
 
-                text +=
+            });
 
-`- (Unknown)[none] - id: ${id}
 
-`;
 
-            }
+            await bot.sendAudio(
+
+                chatId,
+
+                fs.createReadStream(file)
+
+            );
 
         }
 
-        await bot.sendMessage(
 
-            msg.chat.id,
 
-            text
+        if (type === "photo") {
 
-        );
+            file =
+            `photo_${Date.now()}.jpg`;
 
-    }
+            await bot.sendMessage(
 
-    catch (err) {
+                chatId,
 
-        console.log(err);
+                "⏳ Downloading photo..."
 
-        await bot.sendMessage(
-
-            msg.chat.id,
-
-            "❌ Failed to get users"
-
-        );
-
-    }
-
-});
+            );
 
 
 
-// ========================
-// VIDEO DOWNLOAD
-// ========================
+            await ytdlp(link, {
 
-bot.onText(/\/video (.+)/,
+                output: file
 
-async (msg, match) => {
+            });
 
-    const chatId =
-    msg.chat.id;
 
-    saveUser(chatId);
 
-    if (
-        await checkUpdate(chatId)
-    ) return;
+            await bot.sendPhoto(
 
-    const link =
-    match[1];
+                chatId,
 
-    try {
+                fs.createReadStream(file)
 
-        await bot.sendMessage(
+            );
 
-            chatId,
+        }
 
-            "⏳ កំពុងទាញយកវីដេអូ..."
 
-        );
-
-        const file =
-        `video_${Date.now()}.mp4`;
-
-        await ytdlp(link, {
-
-            output: file,
-
-            format: "mp4"
-
-        });
-
-        await bot.sendVideo(
-
-            chatId,
-
-            fs.createReadStream(file)
-
-        );
 
         if (
             fs.existsSync(file)
@@ -663,159 +768,77 @@ async (msg, match) => {
 
     }
 
-});
+}
 
 
 
 // ========================
-// MP3 DOWNLOAD
+// VIDEO
 // ========================
 
-bot.onText(/\/mp3 (.+)/,
+bot.onText(
+
+/\/video (.+)/,
 
 async (msg, match) => {
 
-    const chatId =
-    msg.chat.id;
+    downloadMedia(
 
-    saveUser(chatId);
+        msg.chat.id,
 
-    if (
-        await checkUpdate(chatId)
-    ) return;
+        match[1],
 
-    const link =
-    match[1];
+        "video"
 
-    try {
-
-        await bot.sendMessage(
-
-            chatId,
-
-            "⏳ កំពុងទាញយក MP3..."
-
-        );
-
-        const file =
-        `audio_${Date.now()}.mp3`;
-
-        await ytdlp(link, {
-
-            extractAudio: true,
-
-            audioFormat: "mp3",
-
-            output: file
-
-        });
-
-        await bot.sendAudio(
-
-            chatId,
-
-            fs.createReadStream(file)
-
-        );
-
-        if (
-            fs.existsSync(file)
-        ) {
-
-            fs.unlinkSync(file);
-
-        }
-
-    }
-
-    catch (err) {
-
-        console.log(err);
-
-        await bot.sendMessage(
-
-            chatId,
-
-            "❌ Download failed"
-
-        );
-
-    }
+    );
 
 });
 
 
 
 // ========================
-// PHOTO DOWNLOAD
+// MP3
 // ========================
 
-bot.onText(/\/photo (.+)/,
+bot.onText(
+
+/\/mp3 (.+)/,
 
 async (msg, match) => {
 
-    const chatId =
-    msg.chat.id;
+    downloadMedia(
 
-    saveUser(chatId);
+        msg.chat.id,
 
-    if (
-        await checkUpdate(chatId)
-    ) return;
+        match[1],
 
-    const link =
-    match[1];
+        "mp3"
 
-    try {
+    );
 
-        await bot.sendMessage(
+});
 
-            chatId,
 
-            "⏳ កំពុងទាញយករូបភាព..."
 
-        );
+// ========================
+// PHOTO
+// ========================
 
-        const file =
-        `photo_${Date.now()}.jpg`;
+bot.onText(
 
-        await ytdlp(link, {
+/\/photo (.+)/,
 
-            output: file
+async (msg, match) => {
 
-        });
+    downloadMedia(
 
-        await bot.sendPhoto(
+        msg.chat.id,
 
-            chatId,
+        match[1],
 
-            fs.createReadStream(file)
+        "photo"
 
-        );
-
-        if (
-            fs.existsSync(file)
-        ) {
-
-            fs.unlinkSync(file);
-
-        }
-
-    }
-
-    catch (err) {
-
-        console.log(err);
-
-        await bot.sendMessage(
-
-            chatId,
-
-            "❌ Download failed"
-
-        );
-
-    }
+    );
 
 });
 
@@ -895,9 +918,3 @@ async (query) => {
     }
 
 });
-
-
-
-console.log(
-    "✅ Telegram Bot Started"
-);
