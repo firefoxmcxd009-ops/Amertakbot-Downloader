@@ -57,7 +57,8 @@ const bot = new TelegramBot(TOKEN, {
 });
 
 // REMOVE OLD WEBHOOK
-bot.deleteWebHook();
+bot.deleteWebHook()
+.catch(console.log);
 
 
 
@@ -116,10 +117,13 @@ if (!fs.existsSync(USERS_FILE)) {
 if (!fs.existsSync(UPDATE_FILE)) {
 
     fs.writeFileSync(
+
         UPDATE_FILE,
+
         JSON.stringify({
             updating: false
         })
+
     );
 
 }
@@ -133,9 +137,11 @@ if (!fs.existsSync(UPDATE_FILE)) {
 function getUsers() {
 
     return JSON.parse(
+
         fs.readFileSync(
             USERS_FILE
         )
+
     );
 
 }
@@ -148,7 +154,8 @@ function getUsers() {
 
 function saveUser(id) {
 
-    let users = getUsers();
+    let users =
+    getUsers();
 
     if (!users.includes(id)) {
 
@@ -227,7 +234,9 @@ async function broadcast(text) {
                 text
             );
 
-        } catch (err) {
+        }
+
+        catch (err) {
 
             console.log(
                 "Broadcast error:",
@@ -237,6 +246,34 @@ async function broadcast(text) {
         }
 
     }
+
+}
+
+
+
+// ========================
+// BLOCK COMMANDS
+// ========================
+
+async function checkUpdate(chatId) {
+
+    if (isUpdating()) {
+
+        await bot.sendMessage(
+
+            chatId,
+
+`⚠️ Bot កំពុង update
+
+សូមរង់ចាំបន្តិច ❤️`
+
+        );
+
+        return true;
+
+    }
+
+    return false;
 
 }
 
@@ -283,8 +320,11 @@ ${chatId}
 `;
 
     await bot.sendMessage(
-        chatId,
+
+        msg.chat.id,
+
         text,
+
         {
 
             reply_markup: {
@@ -310,6 +350,7 @@ ${chatId}
             }
 
         }
+
     );
 
 });
@@ -317,7 +358,7 @@ ${chatId}
 
 
 // ========================
-// HELP
+// HELP COMMAND
 // ========================
 
 bot.onText(/\/help/, async (msg) => {
@@ -330,10 +371,13 @@ bot.onText(/\/help/, async (msg) => {
     const text = `
 📌 របៀបប្រើប្រាស់
 
+🎬 ទាញយកវីដេអូ
 /video LINK
 
+🎵 ទាញយក MP3
 /mp3 LINK
 
+🖼 ទាញយករូបភាព
 /photo LINK
 `;
 
@@ -358,8 +402,11 @@ bot.onText(/\/update/, async (msg) => {
     if (chatId !== OWNER_ID) {
 
         return bot.sendMessage(
+
             msg.chat.id,
+
             "❌ Owner only command"
+
         );
 
     }
@@ -398,8 +445,11 @@ bot.onText(/\/updated/, async (msg) => {
     if (chatId !== OWNER_ID) {
 
         return bot.sendMessage(
+
             msg.chat.id,
+
             "❌ Owner only command"
+
         );
 
     }
@@ -427,35 +477,121 @@ bot.onText(/\/updated/, async (msg) => {
 
 
 // ========================
-// BLOCK COMMANDS
+// OWNER USER LIST
 // ========================
 
-async function checkUpdate(chatId) {
+bot.onText(/\/list/, async (msg) => {
 
-    if (isUpdating()) {
+    const chatId =
+    String(msg.chat.id);
 
-        await bot.sendMessage(
+    if (chatId !== OWNER_ID) {
 
-            chatId,
+        return bot.sendMessage(
 
-`⚠️ Bot កំពុង update
+            msg.chat.id,
 
-សូមរង់ចាំបន្តិច ❤️`
+            "❌ Owner only command"
 
         );
 
-        return true;
+    }
+
+    try {
+
+        const users =
+        getUsers();
+
+        if (users.length === 0) {
+
+            return bot.sendMessage(
+
+                msg.chat.id,
+
+                "❌ No users found"
+
+            );
+
+        }
+
+        let text =
+`Total User: ${users.length}
+
+`;
+
+        for (const id of users) {
+
+            try {
+
+                const chat =
+                await bot.getChat(id);
+
+                const firstName =
+                chat.first_name || "";
+
+                const lastName =
+                chat.last_name || "";
+
+                const fullName =
+                `${firstName} ${lastName}`.trim();
+
+                const username =
+                chat.username
+                ?
+                `@${chat.username}`
+                :
+                "none";
+
+                text +=
+
+`- (${fullName})[${username}] - id: ${id}
+
+`;
+
+            }
+
+            catch (err) {
+
+                text +=
+
+`- (Unknown)[none] - id: ${id}
+
+`;
+
+            }
+
+        }
+
+        await bot.sendMessage(
+
+            msg.chat.id,
+
+            text
+
+        );
 
     }
 
-    return false;
+    catch (err) {
 
-}
+        console.log(err);
+
+        await bot.sendMessage(
+
+            msg.chat.id,
+
+            "❌ Failed to get users"
+
+        );
+
+    }
+
+});
 
 
 
 // ========================
-// VIDEO
+// VIDEO DOWNLOAD
 // ========================
 
 bot.onText(/\/video (.+)/,
@@ -532,7 +668,7 @@ async (msg, match) => {
 
 
 // ========================
-// MP3
+// MP3 DOWNLOAD
 // ========================
 
 bot.onText(/\/mp3 (.+)/,
@@ -611,7 +747,7 @@ async (msg, match) => {
 
 
 // ========================
-// PHOTO
+// PHOTO DOWNLOAD
 // ========================
 
 bot.onText(/\/photo (.+)/,
@@ -745,6 +881,14 @@ async (query) => {
         catch (err) {
 
             console.log(err);
+
+            await bot.sendMessage(
+
+                chatId,
+
+                "❌ Failed to send QR"
+
+            );
 
         }
 
