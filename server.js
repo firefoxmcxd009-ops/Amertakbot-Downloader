@@ -199,6 +199,17 @@ Send video link`,
 // ========================
 // /notify (OWNER ONLY)
 // ========================
+bot.onText(/\/id/, async (msg) => {
+  const chatId = msg.chat.id;
+  const userId = msg.from.id;
+
+  await bot.sendMessage(chatId,
+`🆔 Your Telegram Info
+
+👤 User ID: ${userId}
+💬 Chat ID: ${chatId}
+📛 Username: @${msg.from.username || "no_username"}`);
+});
 
 bot.onText(/\/notify (.+)/, async (msg, match) => {
   const chatId = msg.chat.id;
