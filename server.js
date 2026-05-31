@@ -21,19 +21,31 @@ const express = require("express");
 const axios = require("axios");
 
 // ========================
-// CONFIG
+// ENV
 // ========================
 
 const TOKEN = process.env.BOT_TOKEN;
+
+if (!TOKEN) {
+    console.error("BOT_TOKEN missing");
+    process.exit(1);
+}
+
+// ========================
+// API CONFIG (YOUR KEY ADDED)
+// ========================
+
 const API_URL =
     "https://social-download-all-in-one.p.rapidapi.com/v1/social/autolink";
 
 const API_KEY =
     "67b70b3ec3mshf2ea79c89077f81p1e76a9jsn19b5d6afc545";
 
-const bot = new TelegramBot(TOKEN, { polling: true });
+// ========================
+// BOT
+// ========================
 
-console.log("Bot started");
+const bot = new TelegramBot(TOKEN, { polling: true });
 
 // ========================
 // EXPRESS
@@ -50,11 +62,28 @@ app.listen(process.env.PORT || 3000);
 const userStates = {};
 
 // ========================
-// PROGRESS BAR (REAL MESSAGE UPDATE)
+// HELPERS
 // ========================
 
-async function progressBar(chatId, msgId) {
-    const frames = [
+function formatQuality(q) {
+    if (!q) return "Unknown";
+    return q.split("_").map(w => w[0].toUpperCase() + w.slice(1)).join(" ");
+}
+
+function formatSize(bytes) {
+    if (!bytes) return "0 B";
+    const k = 1024;
+    const sizes = ["B", "KB", "MB", "GB"];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return `${(bytes / Math.pow(k, i)).toFixed(2)} ${sizes[i]}`;
+}
+
+// ========================
+// PROGRESS BAR (MESSAGE EDIT)
+// ========================
+
+async function progress(chatId, msgId) {
+    const bar = [
         "⬜⬜⬜⬜⬜ 0%",
         "🟩⬜⬜⬜⬜ 20%",
         "🟩🟩⬜⬜⬜ 40%",
@@ -63,15 +92,12 @@ async function progressBar(chatId, msgId) {
         "🟩🟩🟩🟩🟩 100%"
     ];
 
-    for (let i = 0; i < frames.length; i++) {
-        await new Promise(r => setTimeout(r, 500));
+    for (let i = 0; i < bar.length; i++) {
+        await new Promise(r => setTimeout(r, 400));
 
         await bot.editMessageText(
-            `📥 Downloading...\n\n${frames[i]}`,
-            {
-                chat_id: chatId,
-                message_id: msgId
-            }
+            `📥 Downloading...\n\n${bar[i]}`,
+            { chat_id: chatId, message_id: msgId }
         ).catch(() => {});
     }
 }
@@ -81,7 +107,6 @@ async function progressBar(chatId, msgId) {
 // ========================
 
 async function fetchVideo(chatId, url) {
-
     let loading;
 
     try {
@@ -90,14 +115,12 @@ async function fetchVideo(chatId, url) {
         const res = await axios.post(API_URL, { url }, {
             headers: {
                 "Content-Type": "application/json",
-                "X-RapidAPI-Host":
-                    "social-download-all-in-one.p.rapidapi.com",
+                "X-RapidAPI-Host": "social-download-all-in-one.p.rapidapi.com",
                 "X-RapidAPI-Key": API_KEY
             }
         });
 
         await bot.deleteMessage(chatId, loading.message_id).catch(() => {});
-
         return res.data;
 
     } catch (err) {
@@ -107,13 +130,13 @@ async function fetchVideo(chatId, url) {
             await bot.deleteMessage(chatId, loading.message_id).catch(() => {});
         }
 
-        await bot.sendMessage(chatId, "❌ Error fetching URL");
+        await bot.sendMessage(chatId, "❌ API Error");
         return null;
     }
 }
 
 // ========================
-// MEDIA FIND
+// FIND MEDIA (KEEP LOGIC)
 // ========================
 
 function findMedia(data, type) {
@@ -129,7 +152,6 @@ function findMedia(data, type) {
 
     if (type === "image") {
         return data.medias.find(m =>
-            m.type?.toLowerCase() === "image" ||
             m.extension?.toLowerCase() === "jpg" ||
             m.extension?.toLowerCase() === "png"
         );
@@ -139,62 +161,68 @@ function findMedia(data, type) {
 }
 
 // ========================
-// SEND DIRECT FILE (NO WEB)
+// SEND DIRECT FILE (NO WEB REDIRECT)
 // ========================
 
-async function sendDirectFile(chatId, media, data) {
+async function sendFile(chatId, media, data) {
 
-    const progressMsg = await bot.sendMessage(
-        chatId,
-        "📥 Starting download...\n⬜⬜⬜⬜⬜ 0%"
-    );
+    const msg = await bot.sendMessage(chatId, "📥 Starting... ⬜⬜⬜⬜⬜ 0%");
 
-    await progressBar(chatId, progressMsg.message_id);
+    await progress(chatId, msg.message_id);
 
     try {
+        const stream = await axios.get(media.url, { responseType: "stream" });
 
-        const file = await axios.get(media.url, {
-            responseType: "stream"
-        });
-
-        const type = media.type?.toLowerCase();
-
-        if (type === "audio") {
-            await bot.sendAudio(chatId, file.data, {
+        if (media.type?.toLowerCase() === "audio") {
+            await bot.sendAudio(chatId, stream.data, {
                 caption: `🎵 ${data.title || "Audio"}`
             });
-        } else if (type === "video") {
-            await bot.sendVideo(chatId, file.data, {
+        } else if (media.type?.toLowerCase() === "video") {
+            await bot.sendVideo(chatId, stream.data, {
                 caption: `🎬 ${data.title || "Video"}`
             });
         } else {
-            await bot.sendDocument(chatId, file.data, {
+            await bot.sendDocument(chatId, stream.data, {
                 caption: `📁 ${data.title || "File"}`
             });
         }
 
-        await bot.deleteMessage(chatId, progressMsg.message_id).catch(() => {});
+        await bot.deleteMessage(chatId, msg.message_id).catch(() => {});
 
     } catch (err) {
-        console.error("sendDirectFile error:", err.message);
-
-        await bot.sendMessage(chatId, "❌ Failed to download file");
+        console.error(err.message);
+        await bot.sendMessage(chatId, "❌ Download failed");
     }
 }
 
 // ========================
-// START
+// START (NO KEYBOARD → MARKDOWN STYLE)
 // ========================
 
 bot.onText(/\/start/, async (msg) => {
     const chatId = msg.chat.id;
 
-    await bot.sendMessage(
-        chatId,
-`🎬 AMERTAK DOWNLOADER
+    await bot.sendMessage(chatId,
+`🎬 *AMERTAK DOWNLOADER*
 
-Send video link`
-    );
+Send video link to start
+
+🔵 Tools: https://tools-amertak.vercel.app`,
+{
+    parse_mode: "Markdown",
+    reply_markup: {
+        inline_keyboard: [
+            [
+                {
+                    text: "🔵 Tools",
+                    web_app: {
+                        url: "https://tools-amertak.vercel.app"
+                    }
+                }
+            ]
+        ]
+    }
+});
 });
 
 // ========================
@@ -225,11 +253,24 @@ bot.on("message", async (msg) => {
             });
         }
 
-        return bot.sendMessage(chatId, "📂 Choose format: video / mp3 / image");
+        // ========================
+        // MARKDOWN STYLE (NO BUTTON)
+        // ========================
+
+        return bot.sendMessage(chatId,
+`📂 *Choose format*
+
+👉 send:
+- video
+- image
+- mp3`,
+{
+    parse_mode: "Markdown"
+});
     }
 
     // ========================
-    // DIRECT MP3
+    // MP3
     // ========================
 
     if (text.toLowerCase().includes("mp3")) {
@@ -237,13 +278,13 @@ bot.on("message", async (msg) => {
         if (!data) return;
 
         const media = findMedia(data, "mp3");
-        if (!media) return bot.sendMessage(chatId, "❌ No audio found");
+        if (!media) return bot.sendMessage(chatId, "❌ Not found");
 
-        return sendDirectFile(chatId, media, data);
+        return sendFile(chatId, media, data);
     }
 
     // ========================
-    // DIRECT VIDEO
+    // VIDEO
     // ========================
 
     if (text.toLowerCase().includes("video")) {
@@ -251,13 +292,13 @@ bot.on("message", async (msg) => {
         if (!data) return;
 
         const media = findMedia(data, "video");
-        if (!media) return bot.sendMessage(chatId, "❌ No video found");
+        if (!media) return bot.sendMessage(chatId, "❌ Not found");
 
-        return sendDirectFile(chatId, media, data);
+        return sendFile(chatId, media, data);
     }
 
     // ========================
-    // DIRECT IMAGE
+    // IMAGE
     // ========================
 
     if (text.toLowerCase().includes("image")) {
@@ -265,9 +306,9 @@ bot.on("message", async (msg) => {
         if (!data) return;
 
         const media = findMedia(data, "image");
-        if (!media) return bot.sendMessage(chatId, "❌ No image found");
+        if (!media) return bot.sendMessage(chatId, "❌ Not found");
 
-        return sendDirectFile(chatId, media, data);
+        return sendFile(chatId, media, data);
     }
 
     return bot.sendMessage(chatId, "📎 Send valid URL");
