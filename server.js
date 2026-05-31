@@ -38,8 +38,7 @@ if (!RAPID_API_KEY) {
 // OWNER CONFIG
 // ========================
 
-// 1. វាយ /id ក្នុង bot ដើម្បីរក ID
-// 2. ដាក់ OWNER_ID=លេខ ក្នុង .env នៅ Render
+// វាយ /id ក្នុង bot រួចដាក់លេខ OWNER_ID ក្នុង Render Environment
 const OWNER_ID = process.env.OWNER_ID
     ? parseInt(process.env.OWNER_ID)
     : null;
@@ -50,10 +49,11 @@ function isOwner(from) {
 }
 
 // ========================
-// BOT (polling with auto-restart)
+// BOT
 // ========================
 
 let bot;
+let isRestarting = false;
 
 async function deleteWebhook() {
     try {
@@ -67,24 +67,28 @@ async function deleteWebhook() {
 }
 
 async function createBot() {
+    if (isRestarting) return;
+    isRestarting = true;
+
     if (bot) {
         try {
-            bot.stopPolling();
+            await bot.stopPolling();
         } catch (_) {}
+        bot = null;
     }
 
-    // Delete webhook first to avoid 409 conflict
     await deleteWebhook();
 
-    // Small delay to let Telegram release the session
-    await new Promise((r) => setTimeout(r, 2000));
+    // Wait longer so Telegram fully releases the session
+    await new Promise((r) => setTimeout(r, 4000));
 
     bot = new TelegramBot(TOKEN, {
         polling: {
-            interval: 300,
+            interval: 500,
             autoStart: true,
             params: {
-                timeout: 10
+                timeout: 10,
+                allowed_updates: ["message", "callback_query"]
             }
         }
     });
@@ -94,14 +98,16 @@ async function createBot() {
         const msg = err?.message || "";
 
         if (code === "ETELEGRAM" && msg.includes("409")) {
-            console.warn("⚠️ Polling conflict (409). Restarting in 5s...");
-            setTimeout(() => createBot(), 5000);
+            console.warn("⚠️ Polling conflict (409). Restarting in 8s...");
+            isRestarting = false;
+            setTimeout(() => createBot(), 8000);
             return;
         }
 
         if (code === "EFATAL" || code === "EPARSE") {
-            console.warn(`⚠️ Polling error [${code}]. Restarting in 5s...`);
-            setTimeout(() => createBot(), 5000);
+            console.warn(`⚠️ Polling error [${code}]. Restarting in 8s...`);
+            isRestarting = false;
+            setTimeout(() => createBot(), 8000);
             return;
         }
 
@@ -113,6 +119,7 @@ async function createBot() {
     });
 
     registerHandlers();
+    isRestarting = false;
     console.log("✅ Bot polling started");
 }
 
@@ -196,6 +203,11 @@ function getName(from) {
     return `${first} ${last}`.trim();
 }
 
+// Escape special chars for Markdown V1
+function esc(text) {
+    return String(text).replace(/[_*[\]()~`>#+=|{}.!-]/g, "\\$&");
+}
+
 async function sendMarkdown(chatId, text, extra = {}) {
     try {
         return await bot.sendMessage(chatId, text, {
@@ -204,6 +216,10 @@ async function sendMarkdown(chatId, text, extra = {}) {
         });
     } catch (err) {
         console.error("❌ sendMarkdown error:", err.message);
+        // Fallback: send as plain text
+        try {
+            return await bot.sendMessage(chatId, text.replace(/[*_`]/g, ""), extra);
+        } catch (_) {}
     }
 }
 
@@ -241,8 +257,9 @@ function registerHandlers() {
 
         addUser({ id: msg.from.id, name, username });
 
+        // Use esc() on dynamic values to avoid Markdown parse errors
         const text = `
-🌟 *សួរស្តី ${name}*
+🌟 *សួរស្តី ${esc(name)}*
 
 ស្វាគមន៍មកកាន់ *Amertak Downloader*
 
@@ -265,7 +282,7 @@ function registerHandlers() {
 ━━━━━━━━━━━━━━
 
 👑 *Owner*
-@Amertak_Network
+@Amertak\_Network
 `;
 
         await sendMarkdown(msg.chat.id, text, {
@@ -325,7 +342,7 @@ function registerHandlers() {
         const name = getName(msg.from);
         const userId = msg.from?.id;
         const username = msg.from?.username
-            ? `@${msg.from.username}`
+            ? `@${esc(msg.from.username)}`
             : "មិនមាន";
 
         const text = `
@@ -334,12 +351,12 @@ function registerHandlers() {
 ━━━━━━━━━━━━━━
 
 🪪 *ID:* \`${userId}\`
-📛 *ឈ្មោះ:* ${name}
+📛 *ឈ្មោះ:* ${esc(name)}
 🔗 *Username:* ${username}
 
 ━━━━━━━━━━━━━━
 
-💡 Copy លេខ ID ខាងលើ ហើយដាក់ជា \`OWNER_ID\` ក្នុង Render Environment
+💡 Copy លេខ ID ខាងលើ ហើយដាក់ជា \`OWNER\\_ID\` ក្នុង Render Environment
 `;
 
         await sendMarkdown(msg.chat.id, text);
@@ -358,7 +375,7 @@ function registerHandlers() {
 
                 await sendMarkdown(
                     chatId,
-                    `🎁 *${name}* ចាំបន្តិចមិនណា...`
+                    `🎁 *${esc(name)}* ចាំបន្តិចមិនណា...`
                 );
 
                 const qrPath = "./image/gr.png";
@@ -401,7 +418,7 @@ function registerHandlers() {
             if (!data?.medias?.length) {
                 return sendMarkdown(
                     chatId,
-                    `❌ Sorry *${name}* រកមិនឃើញតំណលីងទេ ;(`
+                    `❌ Sorry *${esc(name)}* រកមិនឃើញតំណលីងទេ ;(`
                 );
             }
 
@@ -410,11 +427,7 @@ function registerHandlers() {
                     (m) => m.type?.toLowerCase().includes("video")
                 ) || data.medias[0];
 
-            const caption = `
-🎬 *${data.title || "Video"}*
-
-👤 ${data.author || "Unknown"}
-`;
+            const caption = `🎬 *${esc(data.title || "Video")}*\n\n👤 ${esc(data.author || "Unknown")}`;
 
             if (data.thumbnail) {
                 await bot.sendPhoto(chatId, data.thumbnail, {
@@ -436,13 +449,10 @@ function registerHandlers() {
                 });
             }
         } catch (err) {
-            console.error(
-                "❌ /video error:",
-                err.response?.data || err.message
-            );
+            console.error("❌ /video error:", err.response?.data || err.message);
             await sendMarkdown(
                 chatId,
-                `❌ Sorry *${name}* រកមិនឃើញតំណលីងទេ ;(`
+                `❌ Sorry *${esc(name)}* រកមិនឃើញតំណលីងទេ ;(`
             );
         }
     });
@@ -466,7 +476,7 @@ function registerHandlers() {
             if (!data?.medias?.length) {
                 return sendMarkdown(
                     chatId,
-                    `❌ Sorry *${name}* រកមិនឃើញតំណលីងទេ ;(`
+                    `❌ Sorry *${esc(name)}* រកមិនឃើញតំណលីងទេ ;(`
                 );
             }
 
@@ -480,21 +490,22 @@ function registerHandlers() {
                 return sendMarkdown(chatId, "❌ មិនមាន MP3");
             }
 
-            await sendMarkdown(chatId, `🎵 *${data.title || "MP3"}*`, {
-                reply_markup: {
-                    inline_keyboard: [
-                        [{ text: "⬇️ Download MP3", url: media.url }]
-                    ]
-                }
-            });
-        } catch (err) {
-            console.error(
-                "❌ /mp3 error:",
-                err.response?.data || err.message
-            );
             await sendMarkdown(
                 chatId,
-                `❌ Sorry *${name}* រកមិនឃើញតំណលីងទេ ;(`
+                `🎵 *${esc(data.title || "MP3")}*`,
+                {
+                    reply_markup: {
+                        inline_keyboard: [
+                            [{ text: "⬇️ Download MP3", url: media.url }]
+                        ]
+                    }
+                }
+            );
+        } catch (err) {
+            console.error("❌ /mp3 error:", err.response?.data || err.message);
+            await sendMarkdown(
+                chatId,
+                `❌ Sorry *${esc(name)}* រកមិនឃើញតំណលីងទេ ;(`
             );
         }
     });
@@ -518,7 +529,7 @@ function registerHandlers() {
             if (!data?.medias?.length) {
                 return sendMarkdown(
                     chatId,
-                    `❌ Sorry *${name}* រកមិនឃើញតំណលីងទេ ;(`
+                    `❌ Sorry *${esc(name)}* រកមិនឃើញតំណលីងទេ ;(`
                 );
             }
 
@@ -530,7 +541,7 @@ function registerHandlers() {
                 ) || data.medias[0];
 
             await bot.sendPhoto(chatId, media.url, {
-                caption: `🖼 *${data.title || "Photo"}*`,
+                caption: `🖼 *${esc(data.title || "Photo")}*`,
                 parse_mode: "Markdown",
                 reply_markup: {
                     inline_keyboard: [
@@ -539,13 +550,10 @@ function registerHandlers() {
                 }
             });
         } catch (err) {
-            console.error(
-                "❌ /photo error:",
-                err.response?.data || err.message
-            );
+            console.error("❌ /photo error:", err.response?.data || err.message);
             await sendMarkdown(
                 chatId,
-                `❌ Sorry *${name}* រកមិនឃើញតំណលីងទេ ;(`
+                `❌ Sorry *${esc(name)}* រកមិនឃើញតំណលីងទេ ;(`
             );
         }
     });
@@ -562,7 +570,7 @@ function registerHandlers() {
         let text = `📊 *Total Users: ${users.length}*\n\n`;
 
         users.forEach((user, index) => {
-            text += `${index + 1}. ${user.name} [@${user.username}]\n`;
+            text += `${index + 1}\\. ${esc(user.name)} \\[@${esc(user.username)}\\]\n`;
         });
 
         await sendMarkdown(msg.chat.id, text);
