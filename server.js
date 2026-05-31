@@ -355,8 +355,6 @@ function registerHandlers() {
 🔗 *Username:* ${username}
 
 ━━━━━━━━━━━━━━
-
-💡 Copy លេខ ID ខាងលើ ហើយដាក់ជា \`OWNER\\_ID\` ក្នុង Render Environment
 `;
 
         await sendMarkdown(msg.chat.id, text);
