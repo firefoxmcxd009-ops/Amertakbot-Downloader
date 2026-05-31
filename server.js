@@ -39,7 +39,7 @@ const API_URL =
     "https://social-download-all-in-one.p.rapidapi.com/v1/social/autolink";
 
 const API_KEY =
-    "YOUR_RAPID_API_KEY";
+    "67b70b3ec3mshf2ea79c89077f81p1e76a9jsn19b5d6afc545";
 
 // ========================
 // BOT
