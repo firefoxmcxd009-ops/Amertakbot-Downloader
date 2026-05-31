@@ -267,17 +267,13 @@ function registerHandlers() {
 
 📥 *Command សម្រាប់ប្រើ*
 
-\`/video link\`
-🎬 ទាញយកវីដេអូ
+\`/video link\` 🎬 ទាញយកវីដេអូ
 
-\`/mp3 link\`
-🎵 ទាញយក MP3
+\`/mp3 link\` 🎵 ទាញយក MP3
 
-\`/photo link\`
-🖼 ទាញយករូបភាព
+\`/photo link\` 🖼 ទាញយករូបភាព
 
-\`/help\`
-📖 បង្ហាញវិធីប្រើប្រាស់
+\`/help\` 📖 បង្ហាញវិធីប្រើប្រាស់
 
 ━━━━━━━━━━━━━━
 
@@ -290,13 +286,13 @@ function registerHandlers() {
                 inline_keyboard: [
                     [
                         {
-                            text: "💚 Donate ខ្ញុំ",
+                            text: "Donate ខ្ញុំ",
                             callback_data: "donate_qr"
                         }
                     ],
                     [
                         {
-                            text: "💙 More tools",
+                            text: "More tools",
                             url: "https://tools-amertak.vercel.app"
                         }
                     ]
@@ -333,7 +329,24 @@ function registerHandlers() {
 
 ⚠️ សូមដាក់ Link ឲ្យត្រឹមត្រូវ
 `;
-        await sendMarkdown(msg.chat.id, text);
+        await sendMarkdown(msg.chat.id, text, {
+            reply_markup: {
+                inline_keyboard: [
+                    [
+                        {
+                            text: "Donate ខ្ញុំ",
+                            callback_data: "donate_qr"
+                        }
+                    ],
+                    [
+                        {
+                            text: "More tools",
+                            url: "https://tools-amertak.vercel.app"
+                        }
+                    ]
+                ]
+            }
+        });
     });
 
     // ── ID ─────────────────────────────────────────────
