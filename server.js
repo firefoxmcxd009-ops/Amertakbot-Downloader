@@ -21,29 +21,16 @@ const express = require("express");
 const axios = require("axios");
 
 // ========================
-// ENV
+// CONFIG
 // ========================
 
 const TOKEN = process.env.BOT_TOKEN;
-
-if (!TOKEN) {
-    console.error("BOT_TOKEN missing");
-    process.exit(1);
-}
-
-// ========================
-// API CONFIG (YOUR KEY ADDED)
-// ========================
 
 const API_URL =
     "https://social-download-all-in-one.p.rapidapi.com/v1/social/autolink";
 
 const API_KEY =
     "67b70b3ec3mshf2ea79c89077f81p1e76a9jsn19b5d6afc545";
-
-// ========================
-// BOT
-// ========================
 
 const bot = new TelegramBot(TOKEN, { polling: true });
 
@@ -79,11 +66,11 @@ function formatSize(bytes) {
 }
 
 // ========================
-// PROGRESS BAR (MESSAGE EDIT)
+// PROGRESS BAR
 // ========================
 
-async function progress(chatId, msgId) {
-    const bar = [
+async function progressBar(chatId, msgId) {
+    const steps = [
         "⬜⬜⬜⬜⬜ 0%",
         "🟩⬜⬜⬜⬜ 20%",
         "🟩🟩⬜⬜⬜ 40%",
@@ -92,11 +79,11 @@ async function progress(chatId, msgId) {
         "🟩🟩🟩🟩🟩 100%"
     ];
 
-    for (let i = 0; i < bar.length; i++) {
+    for (let i = 0; i < steps.length; i++) {
         await new Promise(r => setTimeout(r, 400));
 
         await bot.editMessageText(
-            `📥 Downloading...\n\n${bar[i]}`,
+            `📥 Downloading...\n\n${steps[i]}`,
             { chat_id: chatId, message_id: msgId }
         ).catch(() => {});
     }
@@ -107,15 +94,15 @@ async function progress(chatId, msgId) {
 // ========================
 
 async function fetchVideo(chatId, url) {
-    let loading;
+
+    let loading = await bot.sendMessage(chatId, "⏳ Processing...");
 
     try {
-        loading = await bot.sendMessage(chatId, "⏳ Processing...");
-
         const res = await axios.post(API_URL, { url }, {
             headers: {
                 "Content-Type": "application/json",
-                "X-RapidAPI-Host": "social-download-all-in-one.p.rapidapi.com",
+                "X-RapidAPI-Host":
+                    "social-download-all-in-one.p.rapidapi.com",
                 "X-RapidAPI-Key": API_KEY
             }
         });
@@ -124,22 +111,18 @@ async function fetchVideo(chatId, url) {
         return res.data;
 
     } catch (err) {
-        console.error(err.message);
-
-        if (loading) {
-            await bot.deleteMessage(chatId, loading.message_id).catch(() => {});
-        }
-
+        await bot.deleteMessage(chatId, loading.message_id).catch(() => {});
         await bot.sendMessage(chatId, "❌ API Error");
         return null;
     }
 }
 
 // ========================
-// FIND MEDIA (KEEP LOGIC)
+// FIND MEDIA
 // ========================
 
 function findMedia(data, type) {
+
     if (!data?.medias) return null;
 
     if (type === "video") {
@@ -161,72 +144,66 @@ function findMedia(data, type) {
 }
 
 // ========================
-// SEND DIRECT FILE (NO WEB REDIRECT)
+// SEND FILE
 // ========================
 
 async function sendFile(chatId, media, data) {
 
-    const msg = await bot.sendMessage(chatId, "📥 Starting... ⬜⬜⬜⬜⬜ 0%");
+    const msg = await bot.sendMessage(chatId, "📥 Starting...\n⬜⬜⬜⬜⬜ 0%");
 
-    await progress(chatId, msg.message_id);
+    await progressBar(chatId, msg.message_id);
 
-    try {
-        const stream = await axios.get(media.url, { responseType: "stream" });
+    const stream = await axios.get(media.url, {
+        responseType: "stream"
+    });
 
-        if (media.type?.toLowerCase() === "audio") {
-            await bot.sendAudio(chatId, stream.data, {
-                caption: `🎵 ${data.title || "Audio"}`
-            });
-        } else if (media.type?.toLowerCase() === "video") {
-            await bot.sendVideo(chatId, stream.data, {
-                caption: `🎬 ${data.title || "Video"}`
-            });
-        } else {
-            await bot.sendDocument(chatId, stream.data, {
-                caption: `📁 ${data.title || "File"}`
-            });
-        }
-
-        await bot.deleteMessage(chatId, msg.message_id).catch(() => {});
-
-    } catch (err) {
-        console.error(err.message);
-        await bot.sendMessage(chatId, "❌ Download failed");
+    if (media.type?.toLowerCase() === "audio") {
+        await bot.sendAudio(chatId, stream.data, {
+            caption: `🎵 ${data.title || "Audio"}`
+        });
+    } else if (media.type?.toLowerCase() === "video") {
+        await bot.sendVideo(chatId, stream.data, {
+            caption: `🎬 ${data.title || "Video"}`
+        });
+    } else {
+        await bot.sendDocument(chatId, stream.data, {
+            caption: `📁 ${data.title || "File"}`
+        });
     }
+
+    await bot.deleteMessage(chatId, msg.message_id).catch(() => {});
 }
 
 // ========================
-// START (NO KEYBOARD → MARKDOWN STYLE)
+// START
 // ========================
 
 bot.onText(/\/start/, async (msg) => {
+
     const chatId = msg.chat.id;
 
     await bot.sendMessage(chatId,
-`🎬 *AMERTAK DOWNLOADER*
+`🎬 AMERTAK DOWNLOADER
 
-Send video link to start
-
-🔵 Tools: https://tools-amertak.vercel.app`,
-{
-    parse_mode: "Markdown",
-    reply_markup: {
-        inline_keyboard: [
-            [
-                {
-                    text: "🔵 Tools",
-                    web_app: {
-                        url: "https://tools-amertak.vercel.app"
+Send video link`
+    , {
+        reply_markup: {
+            inline_keyboard: [
+                [
+                    {
+                        text: "🔵 Tools",
+                        web_app: {
+                            url: "https://tools-amertak.vercel.app"
+                        }
                     }
-                }
+                ]
             ]
-        ]
-    }
-});
+        }
+    });
 });
 
 // ========================
-// MESSAGE HANDLER
+// MAIN HANDLER
 // ========================
 
 bot.on("message", async (msg) => {
@@ -254,62 +231,83 @@ bot.on("message", async (msg) => {
         }
 
         // ========================
-        // MARKDOWN STYLE (NO BUTTON)
+        // CHOOSE FORMAT (FIXED BUTTON + KEEP LOGIC)
         // ========================
 
         return bot.sendMessage(chatId,
-`📂 *Choose format*
-
-👉 send:
-- video
-- image
-- mp3`,
+`📂 Choose format`,
 {
-    parse_mode: "Markdown"
+    reply_markup: {
+        inline_keyboard: [
+            [
+                { text: "🎬 Video", callback_data: "video" },
+                { text: "🖼 Image", callback_data: "image" }
+            ],
+            [
+                { text: "🎵 MP3", callback_data: "mp3" }
+            ],
+            [
+                {
+                    text: "🔵 Tools",
+                    web_app: {
+                        url: "https://tools-amertak.vercel.app"
+                    }
+                }
+            ],
+            [
+                {
+                    text: "🔙 Back",
+                    callback_data: "back"
+                }
+            ]
+        ]
+    }
 });
     }
 
-    // ========================
-    // MP3
-    // ========================
-
-    if (text.toLowerCase().includes("mp3")) {
-        const data = userStates[chatId]?.data;
-        if (!data) return;
-
-        const media = findMedia(data, "mp3");
-        if (!media) return bot.sendMessage(chatId, "❌ Not found");
-
-        return sendFile(chatId, media, data);
-    }
-
-    // ========================
-    // VIDEO
-    // ========================
-
-    if (text.toLowerCase().includes("video")) {
-        const data = userStates[chatId]?.data;
-        if (!data) return;
-
-        const media = findMedia(data, "video");
-        if (!media) return bot.sendMessage(chatId, "❌ Not found");
-
-        return sendFile(chatId, media, data);
-    }
-
-    // ========================
-    // IMAGE
-    // ========================
-
-    if (text.toLowerCase().includes("image")) {
-        const data = userStates[chatId]?.data;
-        if (!data) return;
-
-        const media = findMedia(data, "image");
-        if (!media) return bot.sendMessage(chatId, "❌ Not found");
-
-        return sendFile(chatId, media, data);
-    }
-
     return bot.sendMessage(chatId, "📎 Send valid URL");
+});
+
+// ========================
+// CALLBACK HANDLER
+// ========================
+
+bot.on("callback_query", async (query) => {
+
+    const chatId = query.message.chat.id;
+    const action = query.data;
+
+    await bot.answerCallbackQuery(query.id);
+
+    const data = userStates[chatId]?.data;
+    if (!data) return;
+
+    if (action === "back") {
+        return bot.sendMessage(chatId, "📂 Choose format again", {
+            reply_markup: {
+                inline_keyboard: [
+                    [
+                        { text: "🎬 Video", callback_data: "video" },
+                        { text: "🖼 Image", callback_data: "image" }
+                    ],
+                    [
+                        { text: "🎵 MP3", callback_data: "mp3" }
+                    ],
+                    [
+                        {
+                            text: "🔵 Tools",
+                            web_app: {
+                                url: "https://tools-amertak.vercel.app"
+                            }
+                        }
+                    ]
+                ]
+            }
+        });
+    }
+
+    const media = findMedia(data, action);
+    if (!media) return bot.sendMessage(chatId, "❌ Not found");
+
+    return sendFile(chatId, media, data);
 });
