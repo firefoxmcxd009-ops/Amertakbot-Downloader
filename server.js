@@ -1,8 +1,5 @@
 require("dotenv").config();
 
-// ========================
-// CRASH GUARDS
-// ========================
 process.on("uncaughtException", (err) => {
     console.error("uncaughtException:", err.message || err);
 });
@@ -11,7 +8,6 @@ process.on("unhandledRejection", (err) => {
     console.error("unhandledRejection:", err?.message || err);
 });
 
-// ========================
 const TelegramBot = require("node-telegram-bot-api");
 const express = require("express");
 const axios = require("axios");
@@ -27,7 +23,7 @@ if (!TOKEN) {
 }
 
 // ========================
-// API CONFIG
+// API
 // ========================
 const API_URL =
     "https://social-download-all-in-one.p.rapidapi.com/v1/social/autolink";
@@ -36,52 +32,19 @@ const API_KEY =
     "67b70b3ec3mshf2ea79c89077f81p1e76a9jsn19b5d6afc545";
 
 // ========================
-// BOT INIT
-// ========================
 const bot = new TelegramBot(TOKEN, { polling: true });
 
-console.log("🤖 Bot running...");
+console.log("Bot running...");
 
 // ========================
-// EXPRESS (optional backend)
+// EXPRESS
 // ========================
 const app = express();
-
-app.get("/", (_, res) => res.send("Downloader Bot Running"));
-app.get("/health", (_, res) =>
-    res.json({ status: "ok", uptime: process.uptime() })
-);
-
-const PORT = process.env.PORT || 3000;
-app.listen(PORT);
+app.get("/", (_, res) => res.send("Bot Running"));
+app.listen(process.env.PORT || 3000);
 
 // ========================
-// HELPERS
-// ========================
-function formatQuality(q) {
-    if (!q) return "Unknown";
-    return q
-        .split("_")
-        .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-        .join(" ");
-}
-
-function formatFileSize(bytes) {
-    if (!bytes) return "0 Bytes";
-
-    const k = 1024;
-    const sizes = ["Bytes", "KB", "MB", "GB"];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-
-    return (
-        parseFloat((bytes / Math.pow(k, i)).toFixed(2)) +
-        " " +
-        sizes[i]
-    );
-}
-
-// ========================
-// UI BUILDER (DARK CARD)
+// UI BUILD (CARD STYLE)
 // ========================
 function buildUI(data) {
     return `
@@ -94,8 +57,7 @@ function buildUI(data) {
 
 ━━━━━━━━━━━━━━━━━━━━
 📥 DOWNLOAD READY
-━━━━━━━━━━━━━━━━━━━━
-`;
+━━━━━━━━━━━━━━━━━━━━`;
 }
 
 // ========================
@@ -106,10 +68,10 @@ function showLoader(chatId) {
 }
 
 // ========================
-// ERROR
+// ERROR MESSAGE (CUSTOM REQUEST)
 // ========================
-function showError(chatId, msg) {
-    return bot.sendMessage(chatId, `❌ ${msg}`);
+function showError(chatId) {
+    return bot.sendMessage(chatId, "❌ Can't fetch URL");
 }
 
 // ========================
@@ -137,7 +99,7 @@ async function fetchVideo(chatId, url) {
         const data = res.data;
 
         if (!data || data.error) {
-            throw new Error(data.message || "API error");
+            throw new Error("API error");
         }
 
         if (loading) {
@@ -151,66 +113,111 @@ async function fetchVideo(chatId, url) {
             bot.deleteMessage(chatId, loading.message_id).catch(() => {});
         }
 
-        showError(chatId, err.message);
+        showError(chatId);
     }
 }
 
 // ========================
-// RESULT + WEBAPP BUTTON (FULL UI BACKGROUND)
+// ALWAYS BLUE STYLE BUTTON PANEL
+// ========================
+function getButtons(data) {
+    const buttons = [];
+
+    // ALWAYS SHOW MAIN BUTTONS
+    buttons.push([
+        {
+            text: "🔵 Tools (WebApp)",
+            web_app: {
+                url: "https://tools-amertak.vercel.app"
+            }
+        }
+    ]);
+
+    buttons.push([
+        {
+            text: "📥 Download Page",
+            url: "https://tools-amertak.vercel.app"
+        }
+    ]);
+
+    // MEDIA BUTTONS
+    if (data?.medias?.length) {
+        data.medias.forEach((m, i) => {
+            buttons.push([
+                {
+                    text: `⬇ Download ${i + 1}`,
+                    url: m.url
+                }
+            ]);
+        });
+    }
+
+    return {
+        inline_keyboard: buttons
+    };
+}
+
+// ========================
+// RESULT MESSAGE (ALWAYS BUTTONS)
 // ========================
 async function sendResult(chatId, data) {
-
     if (data.thumbnail) {
         await bot.sendPhoto(chatId, data.thumbnail);
     }
 
-    // DARK CARD MESSAGE
     await bot.sendMessage(chatId, buildUI(data));
 
-    // INFO LIST
-    let info = "";
-
-    if (data.medias?.length) {
-        data.medias.forEach((m, i) => {
-            info +=
-                `#${i + 1}\n` +
-                `• ${m.type.toUpperCase()} • ${m.extension.toUpperCase()}\n` +
-                `• ${formatQuality(m.quality)}\n` +
-                `• ${formatFileSize(m.data_size)}\n\n`;
-        });
-    }
-
-    await bot.sendMessage(chatId, info || "No media found");
-
-    // =========================
-    // 🔥 WEBAPP BUTTON (REAL BACKGROUND UI)
-    // =========================
-    const buttons = (data.medias || []).map((m, i) => [
-        {
-            text: `⬇ Download ${i + 1}`,
-            web_app: {
-                url: `https://tools-amertak.vercel.app/download?url=${encodeURIComponent(
-                    m.url
-                )}`,
-            },
-        },
-    ]);
-
-    await bot.sendMessage(chatId, "👇 Open Downloader UI", {
-        reply_markup: {
-            inline_keyboard: buttons,
-        },
+    await bot.sendMessage(chatId, "👇 Choose option below", {
+        reply_markup: getButtons(data)
     });
 }
 
 // ========================
-// START
+// START MESSAGE (WELCOME + BUTTONS ALWAYS)
 // ========================
-bot.onText(/\/start/, (msg) => {
-    bot.sendMessage(
-        msg.chat.id,
-        "👋 Send any video URL to download"
-    );
+bot.onText(/\/start/, async (msg) => {
+    const chatId = msg.chat.id;
+
+    const welcome =
+`━━━━━━━━━━━━━━━━━━━━
+🎬 AMERTAK DOWNLOADER
+━━━━━━━━━━━━━━━━━━━━
+
+👋 Welcome!
+
+Send any video link:
+YouTube / TikTok / Facebook / Instagram
+
+━━━━━━━━━━━━━━━━━━━━
+⚡ FEATURES
+━━━━━━━━━━━━━━━━━━━━
+• Fast download
+• HD quality
+• Multiple formats
+• Web Tools UI
+
+━━━━━━━━━━━━━━━━━━━━`;
+
+    await bot.sendMessage(chatId, welcome, {
+        reply_markup: {
+            inline_keyboard: [
+                [
+                    {
+                        text: "🔵 Tools for Download",
+                        web_app: {
+                            url: "https://tools-amertak.vercel.app"
+                        }
+                    }
+                ],
+                [
+                    {
+                        text: "📥 Open Tools",
+                        url: "https://tools-amertak.vercel.app"
+                    }
+                ]
+            ]
+        }
+    });
 });
 
 // ========================
