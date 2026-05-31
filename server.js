@@ -3,12 +3,19 @@ require("dotenv").config();
 // ========================
 // CRASH GUARDS
 // ========================
-process.on("uncaughtException", console.error);
-process.on("unhandledRejection", console.error);
+
+process.on("uncaughtException", (err) => {
+    console.error("uncaughtException:", err.message || err);
+});
+
+process.on("unhandledRejection", (err) => {
+    console.error("unhandledRejection:", err?.message || err);
+});
 
 // ========================
 // MODULES
 // ========================
+
 const TelegramBot = require("node-telegram-bot-api");
 const express = require("express");
 const axios = require("axios");
@@ -16,280 +23,294 @@ const axios = require("axios");
 // ========================
 // ENV
 // ========================
+
 const TOKEN = process.env.BOT_TOKEN;
+
 if (!TOKEN) {
     console.error("BOT_TOKEN missing");
     process.exit(1);
 }
 
 // ========================
-// API
+// API CONFIG
 // ========================
+
 const API_URL =
     "https://social-download-all-in-one.p.rapidapi.com/v1/social/autolink";
 
 const API_KEY =
-    "67b70b3ec3mshf2ea79c89077f81p1e76a9jsn19b5d6afc545";
+    "YOUR_RAPID_API_KEY";
 
 // ========================
 // BOT
 // ========================
-const bot = new TelegramBot(TOKEN, { polling: true });
-console.log("Bot running");
+
+const bot = new TelegramBot(TOKEN, {
+    polling: true
+});
+
+console.log("Bot started");
 
 // ========================
 // EXPRESS
 // ========================
+
 const app = express();
-app.get("/", (_, res) => res.send("Bot Running"));
-app.listen(process.env.PORT || 3000);
+
+app.get("/", (_, res) => {
+    res.send("Amertak Downloader Bot Running");
+});
+
+app.get("/health", (_, res) => {
+    res.json({
+        status: "ok",
+        uptime: process.uptime()
+    });
+});
+
+const PORT = process.env.PORT || 3000;
+
+app.listen(PORT, () => {
+    console.log(`Server running on ${PORT}`);
+});
 
 // ========================
-// STORAGE
+// TEMP STORAGE
 // ========================
-const userData = {};
-const history = {};
+
+const userStates = {};
 
 // ========================
 // HELPERS
 // ========================
-function saveHistory(chatId, item) {
-    if (!history[chatId]) history[chatId] = [];
-    history[chatId].unshift(item);
-    history[chatId] = history[chatId].slice(0, 10);
+
+function formatQuality(q) {
+    if (!q) return "Unknown";
+    return q
+        .split("_")
+        .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+        .join(" ");
 }
+
+function formatFileSize(bytes) {
+    if (!bytes) return "0 Bytes";
+    const k = 1024;
+    const sizes = ["Bytes", "KB", "MB", "GB"];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return `${parseFloat((bytes / Math.pow(k, i)).toFixed(2))} ${sizes[i]}`;
+}
+
+function showLoader(chatId) {
+    return bot.sendMessage(chatId, "⏳ កំពុងដំណើរការ...");
+}
+
+function showError(chatId) {
+    return bot.sendMessage(chatId, "❌ Can't fetch URL.");
+}
+
+// ========================
+// INLINE KEYBOARDS (NEW FIX)
+// ========================
+
+function mainMenu() {
+    return {
+        inline_keyboard: [
+            [
+                { text: "🔵 Tools", callback_data: "tools" },
+                { text: "📥 Download", callback_data: "download" }
+            ],
+            [
+                { text: "🎵 MP3 Mode", callback_data: "mp3" }
+            ]
+        ]
+    };
+}
+
+function typeMenu() {
+    return {
+        inline_keyboard: [
+            [
+                { text: "🎬 Video", callback_data: "video" },
+                { text: "🖼 Image", callback_data: "image" }
+            ],
+            [
+                { text: "🎵 MP3", callback_data: "mp3" }
+            ]
+        ]
+    };
+}
+
+// ========================
+// FETCH VIDEO
+// ========================
+
+async function fetchVideo(chatId, url) {
+    let loading;
+
+    try {
+        loading = await showLoader(chatId);
+
+        const response = await axios.post(
+            API_URL,
+            { url },
+            {
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-RapidAPI-Host": "social-download-all-in-one.p.rapidapi.com",
+                    "X-RapidAPI-Key": API_KEY
+                }
+            }
+        );
+
+        const data = response.data;
+
+        if (loading) {
+            await bot.deleteMessage(chatId, loading.message_id).catch(() => {});
+        }
+
+        return data;
+
+    } catch (err) {
+        console.error("fetchVideo error:", err.message);
+
+        if (loading) {
+            await bot.deleteMessage(chatId, loading.message_id).catch(() => {});
+        }
+
+        await showError(chatId);
+        return null;
+    }
+}
+
+// ========================
+// FIND MEDIA
+// ========================
 
 function findMedia(data, type) {
     if (!data?.medias) return null;
 
-    if (type === "video")
-        return data.medias.find(m => m.type === "video");
+    if (type === "video") {
+        return data.medias.find(m => m.type?.toLowerCase() === "video");
+    }
 
-    if (type === "image")
+    if (type === "mp3") {
+        return data.medias.find(m => m.type?.toLowerCase() === "audio");
+    }
+
+    if (type === "image") {
         return data.medias.find(m =>
-            m.type === "image" ||
-            m.extension === "jpg" ||
-            m.extension === "png"
+            m.extension?.toLowerCase() === "jpg" ||
+            m.extension?.toLowerCase() === "png"
         );
-
-    if (type === "mp3")
-        return data.medias.find(m => m.type === "audio");
+    }
 
     return null;
 }
 
 // ========================
-// UI
+// SEND DOWNLOAD
 // ========================
-function mainMenu() {
-    return {
-        reply_markup: {
-            keyboard: [
-                [
-                    { text: "🎬 Video" },
-                    { text: "🖼 Image" },
-                    { text: "🎵 MP3" }
-                ],
-                [
-                    { text: "🏠 Home" },
-                    { text: "📂 History" }
-                ]
-            ],
-            resize_keyboard: true
-        }
-    };
-}
 
-// ========================
-// FETCH API
-// ========================
-async function fetchData(url) {
-    const res = await axios.post(
-        API_URL,
-        { url },
-        {
-            headers: {
-                "Content-Type": "application/json",
-                "X-RapidAPI-Key": API_KEY,
-                "X-RapidAPI-Host":
-                    "social-download-all-in-one.p.rapidapi.com"
-            }
-        }
-    );
-    return res.data;
-}
+async function sendDownload(chatId, media, data) {
+    if (data.thumbnail) {
+        await bot.sendPhoto(chatId, data.thumbnail, {
+            caption:
+`🎉 រួចរាល់
 
-// ========================
-// START LOGIC (REUSABLE)
-// ========================
-async function startUI(chatId, name = "User") {
-    return bot.sendMessage(
-        chatId,
-        `👋 សួស្តី ${name}\n\nផ្ញើ Link ដើម្បីទាញយក`,
-        mainMenu()
-    );
+📌 ${data.title || "Untitled"}
+
+⚡ ${formatQuality(media.quality)}
+
+💾 ${formatFileSize(media.data_size)}`
+        });
+    }
+
+    await bot.sendMessage(chatId, "📥 ចុចទាញយក:", {
+        reply_markup: mainMenu()
+    });
+
+    userStates[chatId].downloadUrl = media.url;
 }
 
 // ========================
 // START
 // ========================
+
 bot.onText(/\/start/, async (msg) => {
-    await startUI(msg.chat.id, msg.from.first_name);
+    const chatId = msg.chat.id;
+
+    await bot.sendMessage(chatId,
+`🎬 AMERTAK DOWNLOADER
+
+ផ្ញើ Link ដើម្បីចាប់ផ្តើម`, {
+        reply_markup: mainMenu()
+    });
 });
 
 // ========================
-// HISTORY
+// CALLBACK HANDLER (NEW)
 // ========================
-bot.onText(/\/history/, async (msg) => {
-    const chatId = msg.chat.id;
 
-    const items = history[chatId] || [];
+bot.on("callback_query", async (query) => {
+    const chatId = query.message.chat.id;
+    const data = query.data;
 
-    if (!items.length) {
-        return bot.sendMessage(chatId, "📭 No history");
+    await bot.answerCallbackQuery(query.id);
+
+    if (data === "tools") {
+        return bot.sendMessage(chatId, "🌐 https://tools-amertak.vercel.app");
     }
 
-    let text = "📂 DOWNLOAD HISTORY\n\n";
+    if (data === "download") {
+        return bot.sendMessage(chatId, "📌 Send a video URL first");
+    }
 
-    items.forEach((h, i) => {
-        text += `${i + 1}. ${h.title}\n`;
-    });
+    if (data === "mp3") {
+        return bot.sendMessage(chatId, "🎵 Send URL then choose MP3");
+    }
 
-    bot.sendMessage(chatId, text);
+    if (data === "video" || data === "image" || data === "mp3") {
+        const state = userStates[chatId];
+        if (!state?.data) return showError(chatId);
+
+        const media = findMedia(state.data, data);
+        if (!media) return showError(chatId);
+
+        return sendDownload(chatId, media, state.data);
+    }
 });
 
 // ========================
 // MESSAGE HANDLER
 // ========================
+
 bot.on("message", async (msg) => {
     const chatId = msg.chat.id;
     const text = msg.text;
+
     if (!text || text.startsWith("/")) return;
-
-    // ========================
-    // HOME BUTTON (CALL /start LOGIC ONLY)
-    // ========================
-    if (text === "🏠 Home") {
-        return startUI(chatId, msg.from.first_name);
-    }
-
-    // ========================
-    // HISTORY BUTTON
-    // ========================
-    if (text === "📂 History") {
-        return bot.emit("text", { ...msg, text: "/history" });
-    }
-
-    // ========================
-    // TOOLS → WEBAPP
-    // ========================
-    if (text === "🔵 Tools") {
-        return bot.sendMessage(chatId, "Open Tools", {
-            reply_markup: {
-                inline_keyboard: [
-                    [
-                        {
-                            text: "🌐 Open Tools",
-                            web_app: {
-                                url: "https://tools-amertak.vercel.app"
-                            }
-                        }
-                    ]
-                ]
-            }
-        });
-    }
-
-    // ========================
-    // VIDEO
-    // ========================
-    if (text === "🎬 Video" || text === "🖼 Image" || text === "🎵 MP3") {
-
-        const data = userData[chatId];
-
-        if (!data) {
-            return bot.sendMessage(chatId, "Send URL first");
-        }
-
-        let type =
-            text === "🎬 Video"
-                ? "video"
-                : text === "🖼 Image"
-                ? "image"
-                : "mp3";
-
-        const media = findMedia(data, type);
-
-        if (!media) {
-            return bot.sendMessage(chatId, "❌ Can't fetch URL.");
-        }
-
-        saveHistory(chatId, {
-            title: data.title,
-            url: media.url
-        });
-
-        if (data.thumbnail) {
-            await bot.sendPhoto(chatId, data.thumbnail, {
-                caption: `🎉 រួចរាល់ហើយ\n\n📌 ${data.title}`
-            });
-        }
-
-        return bot.sendMessage(chatId, "📥 ទាញយកខាងក្រោម", {
-            reply_markup: {
-                inline_keyboard: [
-                    [
-                        {
-                            text: "📥 Download",
-                            url: media.url
-                        }
-                    ]
-                ]
-            }
-        });
-    }
 
     // ========================
     // URL DETECT
     // ========================
-    if (
-        text.startsWith("http://") ||
-        text.startsWith("https://")
-    ) {
-        try {
-            const data = await fetchData(text);
 
-            userData[chatId] = data;
+    if (text.startsWith("http")) {
+        const data = await fetchVideo(chatId, text);
+        if (!data) return;
 
-            if (data.thumbnail) {
-                await bot.sendPhoto(chatId, data.thumbnail);
-            }
+        userStates[chatId] = { data };
 
-            return bot.sendMessage(
-                chatId,
-                "📂 ជ្រើសរើសប្រភេទ file",
-                {
-                    reply_markup: {
-                        keyboard: [
-                            [
-                                { text: "🎬 Video" },
-                                { text: "🖼 Image" },
-                                { text: "🎵 MP3" }
-                            ],
-                            [
-                                { text: "🏠 Home" },
-                                { text: "📂 History" }
-                            ]
-                        ],
-                        resize_keyboard: true
-                    }
-                }
-            );
-        } catch (e) {
-            return bot.sendMessage(
-                chatId,
-                "❌ Can't fetch URL."
-            );
+        if (data.thumbnail) {
+            await bot.sendPhoto(chatId, data.thumbnail, {
+                caption: `📌 ${data.title || "Untitled"}`
+            });
         }
+
+        return bot.sendMessage(chatId, "📂 Choose type:", {
+            reply_markup: typeMenu()
+        });
     }
+
+    // fallback
+    return bot.sendMessage(chatId, "📎 Send a valid URL");
 });
