@@ -1,11 +1,15 @@
 require("dotenv").config();
 
+// ========================
+// CRASH GUARDS
+// ========================
+
 process.on("uncaughtException", (err) => {
-    console.log(err);
+    console.error("❌ uncaughtException:", err.message || err);
 });
 
 process.on("unhandledRejection", (err) => {
-    console.log(err);
+    console.error("❌ unhandledRejection:", err?.message || err);
 });
 
 const TelegramBot = require("node-telegram-bot-api");
@@ -21,22 +25,70 @@ const TOKEN = process.env.BOT_TOKEN;
 const RAPID_API_KEY = process.env.RAPID_API_KEY;
 
 if (!TOKEN) {
-    console.log("❌ BOT_TOKEN missing");
+    console.error("❌ BOT_TOKEN missing");
     process.exit(1);
 }
 
 if (!RAPID_API_KEY) {
-    console.log("❌ RAPID_API_KEY missing");
+    console.error("❌ RAPID_API_KEY missing");
     process.exit(1);
 }
 
 // ========================
-// BOT
+// BOT (polling with auto-restart)
 // ========================
 
-const bot = new TelegramBot(TOKEN, {
-    polling: true
-});
+let bot;
+
+function createBot() {
+    if (bot) {
+        try {
+            bot.stopPolling();
+        } catch (_) {}
+    }
+
+    bot = new TelegramBot(TOKEN, {
+        polling: {
+            interval: 300,
+            autoStart: true,
+            params: {
+                timeout: 10
+            }
+        }
+    });
+
+    bot.on("polling_error", (err) => {
+        const code = err?.code || "";
+        const msg = err?.message || "";
+
+        if (
+            code === "ETELEGRAM" &&
+            msg.includes("409")
+        ) {
+            console.warn("⚠️ Polling conflict (409). Restarting in 5s...");
+            setTimeout(() => createBot(), 5000);
+            return;
+        }
+
+        if (
+            code === "EFATAL" ||
+            code === "EPARSE"
+        ) {
+            console.warn(`⚠️ Polling error [${code}]. Restarting in 5s...`);
+            setTimeout(() => createBot(), 5000);
+            return;
+        }
+
+        console.error("❌ polling_error:", msg);
+    });
+
+    bot.on("error", (err) => {
+        console.error("❌ bot error:", err?.message || err);
+    });
+
+    registerHandlers();
+    console.log("✅ Bot polling started");
+}
 
 // ========================
 // EXPRESS
@@ -44,14 +96,18 @@ const bot = new TelegramBot(TOKEN, {
 
 const app = express();
 
-app.get("/", (req, res) => {
+app.get("/", (_, res) => {
     res.send("Amertak Telegram Bot Running!");
+});
+
+app.get("/health", (_, res) => {
+    res.json({ status: "ok", uptime: process.uptime() });
 });
 
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
-    console.log(`✅ Server running on ${PORT}`);
+    console.log(`✅ Server running on port ${PORT}`);
 });
 
 // ========================
@@ -59,7 +115,7 @@ app.listen(PORT, () => {
 // ========================
 
 const API_URL =
-"https://social-download-all-in-one.p.rapidapi.com/v1/social/autolink";
+    "https://social-download-all-in-one.p.rapidapi.com/v1/social/autolink";
 
 // ========================
 // USER DATABASE
@@ -76,64 +132,53 @@ if (!fs.existsSync("./image")) {
 const USERS_FILE = "./data/users.json";
 
 if (!fs.existsSync(USERS_FILE)) {
-    fs.writeFileSync(
-        USERS_FILE,
-        JSON.stringify([])
-    );
+    fs.writeFileSync(USERS_FILE, JSON.stringify([]));
 }
 
 function loadUsers() {
-
-    return JSON.parse(
-        fs.readFileSync(
-            USERS_FILE,
-            "utf8"
-        )
-    );
+    try {
+        return JSON.parse(fs.readFileSync(USERS_FILE, "utf8"));
+    } catch (_) {
+        return [];
+    }
 }
 
 function saveUsers(users) {
-
-    fs.writeFileSync(
-        USERS_FILE,
-        JSON.stringify(users, null, 2)
-    );
+    try {
+        fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2));
+    } catch (err) {
+        console.error("❌ saveUsers error:", err.message);
+    }
 }
 
 function addUser(user) {
-
     const users = loadUsers();
-
-    const exists = users.find(
-        (u) => u.id === user.id
-    );
-
+    const exists = users.find((u) => u.id === user.id);
     if (!exists) {
-
         users.push(user);
-
         saveUsers(users);
     }
 }
 
 // ========================
-// SEND MARKDOWN
+// HELPERS
 // ========================
 
-async function sendMarkdown(
-    chatId,
-    text,
-    extra = {}
-) {
+function getName(from) {
+    const first = from?.first_name || "";
+    const last = from?.last_name || "";
+    return `${first} ${last}`.trim();
+}
 
-    return bot.sendMessage(
-        chatId,
-        text,
-        {
+async function sendMarkdown(chatId, text, extra = {}) {
+    try {
+        return await bot.sendMessage(chatId, text, {
             parse_mode: "Markdown",
             ...extra
-        }
-    );
+        });
+    } catch (err) {
+        console.error("❌ sendMarkdown error:", err.message);
+    }
 }
 
 // ========================
@@ -141,53 +186,36 @@ async function sendMarkdown(
 // ========================
 
 async function fetchMedia(url) {
-
     const response = await axios({
         method: "POST",
         url: API_URL,
         headers: {
-            "Content-Type":
-            "application/json",
-
-            "X-RapidAPI-Key":
-            RAPID_API_KEY,
-
+            "Content-Type": "application/json",
+            "X-RapidAPI-Key": RAPID_API_KEY,
             "X-RapidAPI-Host":
-            "social-download-all-in-one.p.rapidapi.com"
+                "social-download-all-in-one.p.rapidapi.com"
         },
-        data: {
-            url
-        }
+        data: { url },
+        timeout: 20000
     });
-
     return response.data;
 }
 
 // ========================
-// START COMMAND
+// REGISTER ALL HANDLERS
 // ========================
 
-bot.onText(/^\/start$/, async (msg) => {
+function registerHandlers() {
 
-    const firstName =
-    msg.from.first_name || "";
+    // ── START ──────────────────────────────────────────
 
-    const lastName =
-    msg.from.last_name || "";
+    bot.onText(/^\/start$/, async (msg) => {
+        const name = getName(msg.from);
+        const username = msg.from?.username || "no_username";
 
-    const username =
-    msg.from.username || "no_username";
+        addUser({ id: msg.from.id, name, username });
 
-    const name =
-    `${firstName} ${lastName}`.trim();
-
-    addUser({
-        id: msg.from.id,
-        name,
-        username
-    });
-
-    const text = `
+        const text = `
 🌟 *សួរស្តី ${name}*
 
 ស្វាគមន៍មកកាន់ *Amertak Downloader*
@@ -214,43 +242,30 @@ bot.onText(/^\/start$/, async (msg) => {
 @Amertak_Network
 `;
 
-    await sendMarkdown(
-        msg.chat.id,
-        text,
-        {
+        await sendMarkdown(msg.chat.id, text, {
             reply_markup: {
                 inline_keyboard: [
-
                     [
                         {
-                            text:
-                            "💚 Donate ខ្ញុំ",
-                            callback_data:
-                            "donate_qr"
+                            text: "💚 Donate ខ្ញុំ",
+                            callback_data: "donate_qr"
                         }
                     ],
-
                     [
                         {
-                            text:
-                            "💙 More tools",
-                            url:
-                            "https://tools-amertak.vercel.app"
+                            text: "💙 More tools",
+                            url: "https://tools-amertak.vercel.app"
                         }
                     ]
                 ]
             }
-        }
-    );
-});
+        });
+    });
 
-// ========================
-// HELP
-// ========================
+    // ── HELP ───────────────────────────────────────────
 
-bot.onText(/^\/help$/, async (msg) => {
-
-    const text = `
+    bot.onText(/^\/help$/, async (msg) => {
+        const text = `
 📌 *របៀបប្រើប្រាស់*
 
 ━━━━━━━━━━━━━━
@@ -275,461 +290,237 @@ bot.onText(/^\/help$/, async (msg) => {
 
 ⚠️ សូមដាក់ Link ឲ្យត្រឹមត្រូវ
 `;
+        await sendMarkdown(msg.chat.id, text);
+    });
 
-    await sendMarkdown(
-        msg.chat.id,
-        text
-    );
-});
+    // ── DONATE CALLBACK ────────────────────────────────
 
-// ========================
-// DONATE BUTTON
-// ========================
+    bot.on("callback_query", async (query) => {
+        const chatId = query.message.chat.id;
 
-bot.on(
-    "callback_query",
-    async (query) => {
+        if (query.data === "donate_qr") {
+            try {
+                await bot.answerCallbackQuery(query.id).catch(() => {});
 
-    const chatId =
-    query.message.chat.id;
+                const name = getName(query.from);
 
-    if (
-        query.data ===
-        "donate_qr"
-    ) {
+                await sendMarkdown(
+                    chatId,
+                    `🎁 *${name}* ចាំបន្តិចមិនណា...`
+                );
+
+                const qrPath = "./image/gr.png";
+
+                if (!fs.existsSync(qrPath)) {
+                    return sendMarkdown(chatId, "❌ QR Code not found");
+                }
+
+                await bot.sendPhoto(
+                    chatId,
+                    fs.createReadStream(qrPath),
+                    {
+                        caption: "💚 អរគុណសម្រាប់ការឧបត្ថម្ភ",
+                        parse_mode: "Markdown"
+                    }
+                );
+            } catch (err) {
+                console.error("❌ donate_qr error:", err.message);
+                await sendMarkdown(chatId, "❌ មិនអាចផ្ញើ QR បានទេ");
+            }
+        }
+    });
+
+    // ── VIDEO ──────────────────────────────────────────
+
+    bot.onText(/\/video (.+)/, async (msg, match) => {
+        const chatId = msg.chat.id;
+        const url = match[1]?.trim();
+        const name = getName(msg.from);
+
+        if (!url) {
+            return sendMarkdown(chatId, "❌ Invalid URL");
+        }
 
         try {
+            await sendMarkdown(chatId, "⏳ *កំពុងស្វែងរកវីដេអូ...*");
 
-            await bot.answerCallbackQuery(
-                query.id
-            );
+            const data = await fetchMedia(url);
 
-            const firstName =
-            query.from.first_name || "";
-
-            const lastName =
-            query.from.last_name || "";
-
-            const name =
-            `${firstName} ${lastName}`.trim();
-
-            await sendMarkdown(
-                chatId,
-                `🎁 *${name}* ចាំបន្តិចមិនណា...`
-            );
-
-            const qrPath =
-            "./image/gr.png";
-
-            if (
-                !fs.existsSync(qrPath)
-            ) {
-
+            if (!data?.medias?.length) {
                 return sendMarkdown(
                     chatId,
-                    "❌ QR Code not found"
+                    `❌ Sorry *${name}* រកមិនឃើញតំណលីងទេ ;(`
                 );
             }
 
-            await bot.sendPhoto(
-                chatId,
-                fs.createReadStream(qrPath),
-                {
-                    caption:
-                    "💚 អរគុណសម្រាប់ការឧបត្ថម្ភ",
-                    parse_mode:
-                    "Markdown"
-                }
-            );
+            const media =
+                data.medias.find(
+                    (m) => m.type?.toLowerCase().includes("video")
+                ) || data.medias[0];
 
-        } catch (err) {
-
-            console.log(err);
-
-            await sendMarkdown(
-                chatId,
-                "❌ មិនអាចផ្ញើ QR បានទេ"
-            );
-        }
-    }
-});
-
-// ========================
-// VIDEO
-// ========================
-
-bot.onText(
-/\/video (.+)/,
-async (msg, match) => {
-
-    const chatId =
-    msg.chat.id;
-
-    const url =
-    match[1]?.trim();
-
-    const firstName =
-    msg.from.first_name || "";
-
-    const lastName =
-    msg.from.last_name || "";
-
-    const name =
-    `${firstName} ${lastName}`.trim();
-
-    if (!url) {
-
-        return sendMarkdown(
-            chatId,
-            "❌ Invalid URL"
-        );
-    }
-
-    try {
-
-        await sendMarkdown(
-            chatId,
-            "⏳ *កំពុងស្វែងរកវីដេអូ...*"
-        );
-
-        const data =
-        await fetchMedia(url);
-
-        if (
-            !data ||
-            !data.medias ||
-            data.medias.length === 0
-        ) {
-
-            return sendMarkdown(
-                chatId,
-                `❌ Sorry *${name}* រកមិនឃើញតំណលីងទេ ;(`
-            );
-        }
-
-        const media =
-        data.medias.find(
-            (m) =>
-            m.type &&
-            m.type
-            .toLowerCase()
-            .includes("video")
-        ) || data.medias[0];
-
-        const caption = `
+            const caption = `
 🎬 *${data.title || "Video"}*
 
 👤 ${data.author || "Unknown"}
 `;
 
-        if (data.thumbnail) {
-
-            await bot.sendPhoto(
-                chatId,
-                data.thumbnail,
-                {
+            if (data.thumbnail) {
+                await bot.sendPhoto(chatId, data.thumbnail, {
                     caption,
-                    parse_mode:
-                    "Markdown",
+                    parse_mode: "Markdown",
                     reply_markup: {
                         inline_keyboard: [
-                            [
-                                {
-                                    text:
-                                    "⬇️ Download Video",
-                                    url:
-                                    media.url
-                                }
-                            ]
+                            [{ text: "⬇️ Download Video", url: media.url }]
                         ]
                     }
-                }
+                });
+            } else {
+                await sendMarkdown(chatId, caption, {
+                    reply_markup: {
+                        inline_keyboard: [
+                            [{ text: "⬇️ Download Video", url: media.url }]
+                        ]
+                    }
+                });
+            }
+        } catch (err) {
+            console.error(
+                "❌ /video error:",
+                err.response?.data || err.message
             );
-
-        } else {
-
             await sendMarkdown(
                 chatId,
-                caption,
-                {
-                    reply_markup: {
-                        inline_keyboard: [
-                            [
-                                {
-                                    text:
-                                    "⬇️ Download Video",
-                                    url:
-                                    media.url
-                                }
-                            ]
-                        ]
-                    }
-                }
-            );
-        }
-
-    } catch (err) {
-
-        console.log(
-            err.response?.data ||
-            err.message
-        );
-
-        await sendMarkdown(
-            chatId,
-            `❌ Sorry *${name}* រកមិនឃើញតំណលីងទេ ;(`
-        );
-    }
-});
-
-// ========================
-// MP3
-// ========================
-
-bot.onText(
-/\/mp3 (.+)/,
-async (msg, match) => {
-
-    const chatId =
-    msg.chat.id;
-
-    const url =
-    match[1]?.trim();
-
-    const firstName =
-    msg.from.first_name || "";
-
-    const lastName =
-    msg.from.last_name || "";
-
-    const name =
-    `${firstName} ${lastName}`.trim();
-
-    if (!url) {
-
-        return sendMarkdown(
-            chatId,
-            "❌ Invalid URL"
-        );
-    }
-
-    try {
-
-        await sendMarkdown(
-            chatId,
-            "⏳ *កំពុងស្វែងរក MP3...*"
-        );
-
-        const data =
-        await fetchMedia(url);
-
-        if (
-            !data ||
-            !data.medias ||
-            data.medias.length === 0
-        ) {
-
-            return sendMarkdown(
-                chatId,
                 `❌ Sorry *${name}* រកមិនឃើញតំណលីងទេ ;(`
             );
         }
-
-        const media =
-        data.medias.find(
-            (m) =>
-            m.extension === "mp3" ||
-            (
-                m.type &&
-                m.type
-                .toLowerCase()
-                .includes("audio")
-            )
-        );
-
-        if (!media) {
-
-            return sendMarkdown(
-                chatId,
-                "❌ មិនមាន MP3"
-            );
-        }
-
-        await sendMarkdown(
-            chatId,
-            `🎵 *${data.title || "MP3"}*`,
-            {
-                reply_markup: {
-                    inline_keyboard: [
-                        [
-                            {
-                                text:
-                                "⬇️ Download MP3",
-                                url:
-                                media.url
-                            }
-                        ]
-                    ]
-                }
-            }
-        );
-
-    } catch (err) {
-
-        console.log(
-            err.response?.data ||
-            err.message
-        );
-
-        await sendMarkdown(
-            chatId,
-            `❌ Sorry *${name}* រកមិនឃើញតំណលីងទេ ;(`
-        );
-    }
-});
-
-// ========================
-// PHOTO
-// ========================
-
-bot.onText(
-/\/photo (.+)/,
-async (msg, match) => {
-
-    const chatId =
-    msg.chat.id;
-
-    const url =
-    match[1]?.trim();
-
-    const firstName =
-    msg.from.first_name || "";
-
-    const lastName =
-    msg.from.last_name || "";
-
-    const name =
-    `${firstName} ${lastName}`.trim();
-
-    if (!url) {
-
-        return sendMarkdown(
-            chatId,
-            "❌ Invalid URL"
-        );
-    }
-
-    try {
-
-        await sendMarkdown(
-            chatId,
-            "⏳ *កំពុងស្វែងរករូបភាព...*"
-        );
-
-        const data =
-        await fetchMedia(url);
-
-        if (
-            !data ||
-            !data.medias ||
-            data.medias.length === 0
-        ) {
-
-            return sendMarkdown(
-                chatId,
-                `❌ Sorry *${name}* រកមិនឃើញតំណលីងទេ ;(`
-            );
-        }
-
-        const media =
-        data.medias.find(
-            (m) =>
-            m.type &&
-            (
-                m.type
-                .toLowerCase()
-                .includes("image") ||
-
-                m.type
-                .toLowerCase()
-                .includes("photo")
-            )
-        ) || data.medias[0];
-
-        await bot.sendPhoto(
-            chatId,
-            media.url,
-            {
-                caption:
-                `🖼 *${data.title || "Photo"}*`,
-                parse_mode:
-                "Markdown",
-                reply_markup: {
-                    inline_keyboard: [
-                        [
-                            {
-                                text:
-                                "⬇️ Download Photo",
-                                url:
-                                media.url
-                            }
-                        ]
-                    ]
-                }
-            }
-        );
-
-    } catch (err) {
-
-        console.log(
-            err.response?.data ||
-            err.message
-        );
-
-        await sendMarkdown(
-            chatId,
-            `❌ Sorry *${name}* រកមិនឃើញតំណលីងទេ ;(`
-        );
-    }
-});
-
-// ========================
-// LIST
-// ========================
-
-bot.onText(/^\/list$/, async (msg) => {
-
-    const username =
-    msg.from.username || "";
-
-    if (
-        username !==
-        "Amertak_Network"
-    ) {
-
-        return sendMarkdown(
-            msg.chat.id,
-            "❌ Owner only"
-        );
-    }
-
-    const users =
-    loadUsers();
-
-    let text =
-`📊 *Monthly User: ${users.length}*\n\n`;
-
-    users.forEach(
-        (user, index) => {
-
-        text +=
-`${index + 1}. ${user.name} [@${user.username}]\n`;
     });
 
-    await sendMarkdown(
-        msg.chat.id,
-        text
-    );
-});
+    // ── MP3 ────────────────────────────────────────────
 
-console.log("✅ Telegram Bot Started");
+    bot.onText(/\/mp3 (.+)/, async (msg, match) => {
+        const chatId = msg.chat.id;
+        const url = match[1]?.trim();
+        const name = getName(msg.from);
+
+        if (!url) {
+            return sendMarkdown(chatId, "❌ Invalid URL");
+        }
+
+        try {
+            await sendMarkdown(chatId, "⏳ *កំពុងស្វែងរក MP3...*");
+
+            const data = await fetchMedia(url);
+
+            if (!data?.medias?.length) {
+                return sendMarkdown(
+                    chatId,
+                    `❌ Sorry *${name}* រកមិនឃើញតំណលីងទេ ;(`
+                );
+            }
+
+            const media = data.medias.find(
+                (m) =>
+                    m.extension === "mp3" ||
+                    m.type?.toLowerCase().includes("audio")
+            );
+
+            if (!media) {
+                return sendMarkdown(chatId, "❌ មិនមាន MP3");
+            }
+
+            await sendMarkdown(chatId, `🎵 *${data.title || "MP3"}*`, {
+                reply_markup: {
+                    inline_keyboard: [
+                        [{ text: "⬇️ Download MP3", url: media.url }]
+                    ]
+                }
+            });
+        } catch (err) {
+            console.error(
+                "❌ /mp3 error:",
+                err.response?.data || err.message
+            );
+            await sendMarkdown(
+                chatId,
+                `❌ Sorry *${name}* រកមិនឃើញតំណលីងទេ ;(`
+            );
+        }
+    });
+
+    // ── PHOTO ──────────────────────────────────────────
+
+    bot.onText(/\/photo (.+)/, async (msg, match) => {
+        const chatId = msg.chat.id;
+        const url = match[1]?.trim();
+        const name = getName(msg.from);
+
+        if (!url) {
+            return sendMarkdown(chatId, "❌ Invalid URL");
+        }
+
+        try {
+            await sendMarkdown(chatId, "⏳ *កំពុងស្វែងរករូបភាព...*");
+
+            const data = await fetchMedia(url);
+
+            if (!data?.medias?.length) {
+                return sendMarkdown(
+                    chatId,
+                    `❌ Sorry *${name}* រកមិនឃើញតំណលីងទេ ;(`
+                );
+            }
+
+            const media =
+                data.medias.find(
+                    (m) =>
+                        m.type?.toLowerCase().includes("image") ||
+                        m.type?.toLowerCase().includes("photo")
+                ) || data.medias[0];
+
+            await bot.sendPhoto(chatId, media.url, {
+                caption: `🖼 *${data.title || "Photo"}*`,
+                parse_mode: "Markdown",
+                reply_markup: {
+                    inline_keyboard: [
+                        [{ text: "⬇️ Download Photo", url: media.url }]
+                    ]
+                }
+            });
+        } catch (err) {
+            console.error(
+                "❌ /photo error:",
+                err.response?.data || err.message
+            );
+            await sendMarkdown(
+                chatId,
+                `❌ Sorry *${name}* រកមិនឃើញតំណលីងទេ ;(`
+            );
+        }
+    });
+
+    // ── LIST (owner only) ──────────────────────────────
+
+    bot.onText(/^\/list$/, async (msg) => {
+        const username = msg.from?.username || "";
+
+        if (username !== "Amertak_Network") {
+            return sendMarkdown(msg.chat.id, "❌ Owner only");
+        }
+
+        const users = loadUsers();
+
+        let text = `📊 *Total Users: ${users.length}*\n\n`;
+
+        users.forEach((user, index) => {
+            text += `${index + 1}. ${user.name} [@${user.username}]\n`;
+        });
+
+        await sendMarkdown(msg.chat.id, text);
+    });
+}
+
+// ========================
+// START
+// ========================
+
+createBot();
