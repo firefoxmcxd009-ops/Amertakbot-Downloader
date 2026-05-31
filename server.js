@@ -16,7 +16,7 @@ const TelegramBot = require("node-telegram-bot-api");
 const express = require("express");
 const axios = require("axios");
 const fs = require("fs");
-const youtubedl = require("youtube-dl-exec");
+const { raw: youtubedl } = require("youtube-dl-exec");
 
 // ========================
 // ENV
@@ -205,22 +205,6 @@ async function sendMarkdown(chatId, text, extra = {}) {
     }
 }
 
-// ========================
-// yt-dlp FETCH INFO
-// ========================
-
-async function getYouTubeInfo(url) {
-    const info = await youtubedl(url, {
-        dumpSingleJson: true,
-        noWarnings: true,
-        noCallHome: true,
-        noCheckCertificate: true,
-        preferFreeFormats: true,
-        youtubeSkipDashManifest: true
-    });
-    return info;
-}
-
 // Get best video+audio format direct URL
 async function getVideoUrl(url) {
     const info = await youtubedl(url, {
@@ -381,10 +365,7 @@ TikTok / IG / FB = ERROR
 \`\`\`
 *ID:*       \`${userId}\`
 *Name:*     ${esc(name)}
-*Username:* ${username}
-
-────────────────────────
-`;
+*Username:* ${username}`;
 
         await sendMarkdown(msg.chat.id, text);
     });
