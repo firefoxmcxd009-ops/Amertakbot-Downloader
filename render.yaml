@@ -2,6 +2,5 @@ services:
   - type: web
     name: amertak-bot
     env: node
-    plan: free
     buildCommand: npm install
     startCommand: node server.js
