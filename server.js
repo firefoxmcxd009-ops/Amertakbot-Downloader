@@ -116,7 +116,7 @@ function mainMenu() {
     return {
         inline_keyboard: [
             [
-                { text: "🔵 Tools", callback_data: "tools" },
+                { text: "⚙️ Tools", callback_data: "tools" },
                 { text: "📥 Download", callback_data: "download" }
             ],
             [
@@ -258,7 +258,20 @@ bot.on("callback_query", async (query) => {
     await bot.answerCallbackQuery(query.id);
 
     if (data === "tools") {
-        return bot.sendMessage(chatId, "🌐 https://tools-amertak.vercel.app");
+        return bot.sendMessage(chatId, "🌐 ប្រើ tools ច្រើនជាងនេះ", {
+            reply_markup: {
+
+                inline_keyboard: [
+
+                        [
+                        {
+                            text: "🔵 Tools",
+                            url: "https://tools-amertak.vercel.app"
+                        }
+                    ]
+                ]
+            }
+        });
     }
 
     if (data === "download") {
