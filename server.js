@@ -16,7 +16,9 @@ const TelegramBot = require("node-telegram-bot-api");
 const express = require("express");
 const axios = require("axios");
 const fs = require("fs");
-const { raw: youtubedl } = require("youtube-dl-exec");
+
+// youtube-dl-exec default export returns parsed JSON correctly
+const youtubedl = require("youtube-dl-exec");
 
 // ========================
 // ENV
@@ -205,47 +207,53 @@ async function sendMarkdown(chatId, text, extra = {}) {
     }
 }
 
-// Get best video+audio format direct URL
+// ========================
+// YOUTUBE FETCH
+// ========================
+
 async function getVideoUrl(url) {
+    // youtubedl() default call returns parsed JSON object
     const info = await youtubedl(url, {
         dumpSingleJson: true,
         noWarnings: true,
         noCheckCertificate: true,
-        format: "best[ext=mp4]/best"
+        addHeader: ["referer:youtube.com", "user-agent:googlebot"],
+        format: "best[ext=mp4][height<=720]/best[ext=mp4]/best"
     });
 
-    // Find best mp4 format
-    const fmt = info.formats
-        ?.filter((f) => f.ext === "mp4" && f.url)
-        ?.sort((a, b) => (b.height || 0) - (a.height || 0))[0];
+    // Pick best mp4 format from formats array
+    const fmt = (info.formats || [])
+        .filter((f) => f.ext === "mp4" && f.url && f.vcodec !== "none")
+        .sort((a, b) => (b.height || 0) - (a.height || 0))[0];
 
     return {
         url: fmt?.url || info.url,
-        title: info.title,
-        thumbnail: info.thumbnail,
-        uploader: info.uploader || info.channel,
+        title: info.title || "YouTube Video",
+        thumbnail: info.thumbnail || null,
+        uploader: info.uploader || info.channel || "Unknown",
         duration: info.duration_string || ""
     };
 }
 
-// Get best audio format direct URL
 async function getAudioUrl(url) {
     const info = await youtubedl(url, {
         dumpSingleJson: true,
         noWarnings: true,
         noCheckCertificate: true,
-        format: "bestaudio[ext=m4a]/bestaudio/best"
+        addHeader: ["referer:youtube.com", "user-agent:googlebot"],
+        format: "bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio"
     });
 
-    const fmt = info.formats
-        ?.filter((f) => (f.ext === "m4a" || f.ext === "webm") && f.url)
-        ?.sort((a, b) => (b.abr || 0) - (a.abr || 0))[0];
+    // Pick best audio format
+    const fmt = (info.formats || [])
+        .filter((f) => (f.ext === "m4a" || f.ext === "webm") && f.url && f.acodec !== "none")
+        .sort((a, b) => (b.abr || 0) - (a.abr || 0))[0];
 
     return {
         url: fmt?.url || info.url,
-        title: info.title,
-        thumbnail: info.thumbnail,
-        uploader: info.uploader || info.channel,
+        title: info.title || "YouTube Audio",
+        thumbnail: info.thumbnail || null,
+        uploader: info.uploader || info.channel || "Unknown",
         duration: info.duration_string || ""
     };
 }
@@ -380,7 +388,11 @@ TikTok / IG / FB = ERROR
                 await bot.answerCallbackQuery(query.id).catch(() => {});
 
                 const name = getName(query.from);
-                const qrPath = "./image/gr.png";
+
+                // Support both gr.png and qr.png filenames
+                const qrPath = fs.existsSync("./image/gr.png")
+                    ? "./image/gr.png"
+                    : "./image/qr.png";
 
                 if (!fs.existsSync(qrPath)) {
                     return sendMarkdown(chatId, "QR Code មិនមានទេ");
@@ -442,8 +454,8 @@ TikTok / IG / FB = ERROR
 `\`\`\`
 [SUCCESS] Video Ready
 \`\`\`
-*Title:*   ${esc(data.title || "YouTube Video")}
-*Channel:* ${esc(data.uploader || "Unknown")}
+*Title:*   ${esc(data.title)}
+*Channel:* ${esc(data.uploader)}
 *Length:*  ${data.duration || "N/A"}
 
 ────────────────────────
@@ -525,8 +537,8 @@ TikTok / IG / FB = ERROR
 `\`\`\`
 [SUCCESS] Audio Ready
 \`\`\`
-*Title:*   ${esc(data.title || "YouTube Audio")}
-*Channel:* ${esc(data.uploader || "Unknown")}
+*Title:*   ${esc(data.title)}
+*Channel:* ${esc(data.uploader)}
 *Length:*  ${data.duration || "N/A"}
 
 ────────────────────────
