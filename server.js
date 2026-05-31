@@ -15,7 +15,6 @@ process.on("unhandledRejection", (err) => {
 const TelegramBot = require("node-telegram-bot-api");
 const express = require("express");
 const axios = require("axios");
-const fs = require("fs");
 
 // ========================
 // ENV
@@ -28,7 +27,7 @@ if (!TOKEN) {
 }
 
 // ========================
-// API CONFIG (from frontend)
+// API CONFIG
 // ========================
 const API_URL =
     "https://social-download-all-in-one.p.rapidapi.com/v1/social/autolink";
@@ -37,83 +36,28 @@ const API_KEY =
     "67b70b3ec3mshf2ea79c89077f81p1e76a9jsn19b5d6afc545";
 
 // ========================
-// BOT INIT (advanced structure)
+// BOT INIT
 // ========================
-let bot;
-let isRestarting = false;
+const bot = new TelegramBot(TOKEN, { polling: true });
 
-async function createBot() {
-    if (isRestarting) return;
-    isRestarting = true;
-
-    if (bot) {
-        try { await bot.stopPolling(); } catch (_) {}
-        bot = null;
-    }
-
-    bot = new TelegramBot(TOKEN, {
-        polling: {
-            autoStart: true,
-            interval: 500,
-            params: {
-                timeout: 10,
-                allowed_updates: ["message"]
-            }
-        }
-    });
-
-    registerHandlers();
-
-    isRestarting = false;
-    console.log("Bot started");
-}
+console.log("🤖 Bot running...");
 
 // ========================
-// EXPRESS
+// EXPRESS (optional backend)
 // ========================
 const app = express();
 
-app.get("/", (_, res) => res.send("Social Downloader Bot Running"));
+app.get("/", (_, res) => res.send("Downloader Bot Running"));
 app.get("/health", (_, res) =>
     res.json({ status: "ok", uptime: process.uptime() })
 );
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log("Server running:", PORT));
+app.listen(PORT);
 
 // ========================
-// SIMPLE USER DB
+// HELPERS
 // ========================
-if (!fs.existsSync("./data")) fs.mkdirSync("./data");
-const USERS_FILE = "./data/users.json";
-
-if (!fs.existsSync(USERS_FILE)) {
-    fs.writeFileSync(USERS_FILE, JSON.stringify([]));
-}
-
-function loadUsers() {
-    return JSON.parse(fs.readFileSync(USERS_FILE));
-}
-
-function saveUser(user) {
-    const users = loadUsers();
-    if (!users.find((u) => u.id === user.id)) {
-        users.push(user);
-        fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2));
-    }
-}
-
-// ========================
-// HELPERS (frontend mapped)
-// ========================
-function showLoader(chatId) {
-    return bot.sendMessage(chatId, "⏳ Loading...");
-}
-
-function showError(chatId, message) {
-    return bot.sendMessage(chatId, `❌ ${message}`);
-}
-
 function formatQuality(q) {
     if (!q) return "Unknown";
     return q
@@ -124,9 +68,11 @@ function formatQuality(q) {
 
 function formatFileSize(bytes) {
     if (!bytes) return "0 Bytes";
+
     const k = 1024;
     const sizes = ["Bytes", "KB", "MB", "GB"];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
+
     return (
         parseFloat((bytes / Math.pow(k, i)).toFixed(2)) +
         " " +
@@ -135,17 +81,49 @@ function formatFileSize(bytes) {
 }
 
 // ========================
-// CORE FETCH (frontend logic converted)
+// UI BUILDER (DARK CARD)
 // ========================
-async function fetchVideoInfo(chatId, videoUrl) {
-    let loadingMsg;
+function buildUI(data) {
+    return `
+━━━━━━━━━━━━━━━━━━━━
+🎬 VIDEO DOWNLOADER
+━━━━━━━━━━━━━━━━━━━━
+
+📌 Title: ${data.title || "Untitled"}
+👤 Author: ${data.author || "Unknown"}
+
+━━━━━━━━━━━━━━━━━━━━
+📥 DOWNLOAD READY
+━━━━━━━━━━━━━━━━━━━━
+`;
+}
+
+// ========================
+// LOADER
+// ========================
+function showLoader(chatId) {
+    return bot.sendMessage(chatId, "⏳ Processing...");
+}
+
+// ========================
+// ERROR
+// ========================
+function showError(chatId, msg) {
+    return bot.sendMessage(chatId, `❌ ${msg}`);
+}
+
+// ========================
+// FETCH API
+// ========================
+async function fetchVideo(chatId, url) {
+    let loading;
 
     try {
-        loadingMsg = await showLoader(chatId);
+        loading = await showLoader(chatId);
 
-        const response = await axios.post(
+        const res = await axios.post(
             API_URL,
-            { url: videoUrl },
+            { url },
             {
                 headers: {
                     "Content-Type": "application/json",
@@ -156,97 +134,93 @@ async function fetchVideoInfo(chatId, videoUrl) {
             }
         );
 
-        const data = response.data;
+        const data = res.data;
 
         if (!data || data.error) {
             throw new Error(data.message || "API error");
         }
 
-        await displayVideoInfo(chatId, data);
+        if (loading) {
+            bot.deleteMessage(chatId, loading.message_id).catch(() => {});
+        }
+
+        await sendResult(chatId, data);
 
     } catch (err) {
-        console.error(err.message);
-        await showError(chatId, err.message);
-    } finally {
-        if (loadingMsg) {
-            bot.deleteMessage(chatId, loadingMsg.message_id).catch(() => {});
+        if (loading) {
+            bot.deleteMessage(chatId, loading.message_id).catch(() => {});
         }
+
+        showError(chatId, err.message);
     }
 }
 
 // ========================
-// DISPLAY (frontend UI → Telegram)
+// RESULT + WEBAPP BUTTON (FULL UI BACKGROUND)
 // ========================
-async function displayVideoInfo(chatId, data) {
-    const title = data.title || "Untitled Video";
-    const author = data.author || "Unknown";
+async function sendResult(chatId, data) {
 
     if (data.thumbnail) {
         await bot.sendPhoto(chatId, data.thumbnail);
     }
 
-    let msg =
-        `🎬 ${title}\n` +
-        `👤 By: ${author}\n\n` +
-        `📥 Download Options:\n\n`;
+    // DARK CARD MESSAGE
+    await bot.sendMessage(chatId, buildUI(data));
 
-    if (data.medias && data.medias.length > 0) {
-        data.medias.forEach((m, i) => {
-            msg +=
-                `#${i + 1}\n` +
-                `🎞 ${m.type.toUpperCase()} • ${m.extension.toUpperCase()}\n` +
-                `⚡ ${formatQuality(m.quality)}\n` +
-                `📦 ${formatFileSize(m.data_size)}\n` +
-                `🔗 ${m.url}\n\n`;
-        });
-    } else {
-        msg += "No download options available.";
-    }
-
-    await bot.sendMessage(chatId, msg);
+    // INFO LIST
+    let info = "";
 
     if (data.medias?.length) {
-        const buttons = data.medias.map((m) => [
-            { text: "⬇️ Download", url: m.url },
-        ]);
-
-        await bot.sendMessage(chatId, "👇 Download:", {
-            reply_markup: { inline_keyboard: buttons },
+        data.medias.forEach((m, i) => {
+            info +=
+                `#${i + 1}\n` +
+                `• ${m.type.toUpperCase()} • ${m.extension.toUpperCase()}\n` +
+                `• ${formatQuality(m.quality)}\n` +
+                `• ${formatFileSize(m.data_size)}\n\n`;
         });
     }
-}
 
-// ========================
-// HANDLERS
-// ========================
-function registerHandlers() {
+    await bot.sendMessage(chatId, info || "No media found");
 
-    // START
-    bot.onText(/\/start/, async (msg) => {
-        saveUser({
-            id: msg.from.id,
-            name: msg.from.first_name,
-            username: msg.from.username || "none",
-        });
+    // =========================
+    // 🔥 WEBAPP BUTTON (REAL BACKGROUND UI)
+    // =========================
+    const buttons = (data.medias || []).map((m, i) => [
+        {
+            text: `⬇ Download ${i + 1}`,
+            web_app: {
+                url: `https://tools-amertak.vercel.app/download?url=${encodeURIComponent(
+                    m.url
+                )}`,
+            },
+        },
+    ]);
 
-        bot.sendMessage(
-            msg.chat.id,
-            "👋 Send video URL (TikTok / FB / IG / etc)"
-        );
-    });
-
-    // MAIN INPUT (like frontend click + enter)
-    bot.on("message", async (msg) => {
-        const chatId = msg.chat.id;
-        const text = msg.text;
-
-        if (!text || text.startsWith("/")) return;
-
-        await fetchVideoInfo(chatId, text.trim());
+    await bot.sendMessage(chatId, "👇 Open Downloader UI", {
+        reply_markup: {
+            inline_keyboard: buttons,
+        },
     });
 }
 
 // ========================
-// START BOT
+// START
 // ========================
-createBot();
+bot.onText(/\/start/, (msg) => {
+    bot.sendMessage(
+        msg.chat.id,
+        "👋 Send any video URL to download"
+    );
+});
+
+// ========================
+// INPUT HANDLER
+// ========================
+bot.on("message", async (msg) => {
+    const chatId = msg.chat.id;
+    const text = msg.text;
+
+    if (!text || text.startsWith("/")) return;
+
+    await fetchVideo(chatId, text.trim());
+});
