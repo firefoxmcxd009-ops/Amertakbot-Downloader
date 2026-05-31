@@ -1,12 +1,10 @@
 require("dotenv").config();
 
 process.on("uncaughtException", (err) => {
-    console.log("UNCAUGHT EXCEPTION:");
     console.log(err);
 });
 
 process.on("unhandledRejection", (err) => {
-    console.log("UNHANDLED REJECTION:");
     console.log(err);
 });
 
@@ -16,21 +14,21 @@ const axios = require("axios");
 const fs = require("fs");
 
 // ========================
-// ENV CHECK
+// ENV
 // ========================
 
-if (!process.env.BOT_TOKEN) {
+const TOKEN = process.env.BOT_TOKEN;
+const RAPID_API_KEY = process.env.RAPID_API_KEY;
+
+if (!TOKEN) {
     console.log("❌ BOT_TOKEN missing");
     process.exit(1);
 }
 
-if (!process.env.RAPID_API_KEY) {
+if (!RAPID_API_KEY) {
     console.log("❌ RAPID_API_KEY missing");
     process.exit(1);
 }
-
-const TOKEN = process.env.BOT_TOKEN;
-const RAPID_API_KEY = process.env.RAPID_API_KEY;
 
 // ========================
 // BOT
@@ -53,7 +51,7 @@ app.get("/", (req, res) => {
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
-    console.log(`✅ Server running on port ${PORT}`);
+    console.log(`✅ Server running on ${PORT}`);
 });
 
 // ========================
@@ -64,14 +62,18 @@ const API_URL =
 "https://social-download-all-in-one.p.rapidapi.com/v1/social/autolink";
 
 // ========================
-// USERS
+// USER DATABASE
 // ========================
-
-const USERS_FILE = "./data/users.json";
 
 if (!fs.existsSync("./data")) {
     fs.mkdirSync("./data");
 }
+
+if (!fs.existsSync("./image")) {
+    fs.mkdirSync("./image");
+}
+
+const USERS_FILE = "./data/users.json";
 
 if (!fs.existsSync(USERS_FILE)) {
     fs.writeFileSync(
@@ -103,7 +105,7 @@ function addUser(user) {
     const users = loadUsers();
 
     const exists = users.find(
-        u => u.id === user.id
+        (u) => u.id === user.id
     );
 
     if (!exists) {
@@ -115,38 +117,57 @@ function addUser(user) {
 }
 
 // ========================
+// SEND MARKDOWN
+// ========================
+
+async function sendMarkdown(
+    chatId,
+    text,
+    extra = {}
+) {
+
+    return bot.sendMessage(
+        chatId,
+        text,
+        {
+            parse_mode: "Markdown",
+            ...extra
+        }
+    );
+}
+
+// ========================
 // FETCH API
 // ========================
 
 async function fetchMedia(url) {
 
-    const response = await axios.post(
-        API_URL,
-        {
-            url: url
+    const response = await axios({
+        method: "POST",
+        url: API_URL,
+        headers: {
+            "Content-Type":
+            "application/json",
+
+            "X-RapidAPI-Key":
+            RAPID_API_KEY,
+
+            "X-RapidAPI-Host":
+            "social-download-all-in-one.p.rapidapi.com"
         },
-        {
-            headers: {
-                "Content-Type":
-                "application/json",
-
-                "X-RapidAPI-Key":
-                RAPID_API_KEY,
-
-                "X-RapidAPI-Host":
-                "social-download-all-in-one.p.rapidapi.com"
-            }
+        data: {
+            url
         }
-    );
+    });
 
     return response.data;
 }
 
 // ========================
-// START
+// START COMMAND
 // ========================
 
-bot.onText(/\/start/, async (msg) => {
+bot.onText(/^\/start$/, async (msg) => {
 
     const firstName =
     msg.from.first_name || "";
@@ -193,11 +214,10 @@ bot.onText(/\/start/, async (msg) => {
 @Amertak_Network
 `;
 
-    await bot.sendMessage(
+    await sendMarkdown(
         msg.chat.id,
         text,
         {
-            parse_mode: "Markdown",
             reply_markup: {
                 inline_keyboard: [
 
@@ -228,7 +248,7 @@ bot.onText(/\/start/, async (msg) => {
 // HELP
 // ========================
 
-bot.onText(/\/help/, async (msg) => {
+bot.onText(/^\/help$/, async (msg) => {
 
     const text = `
 📌 *របៀបប្រើប្រាស់*
@@ -256,12 +276,9 @@ bot.onText(/\/help/, async (msg) => {
 ⚠️ សូមដាក់ Link ឲ្យត្រឹមត្រូវ
 `;
 
-    await bot.sendMessage(
+    await sendMarkdown(
         msg.chat.id,
-        text,
-        {
-            parse_mode: "Markdown"
-        }
+        text
     );
 });
 
@@ -276,7 +293,10 @@ bot.on(
     const chatId =
     query.message.chat.id;
 
-    if (query.data === "donate_qr") {
+    if (
+        query.data ===
+        "donate_qr"
+    ) {
 
         try {
 
@@ -293,9 +313,9 @@ bot.on(
             const name =
             `${firstName} ${lastName}`.trim();
 
-            await bot.sendMessage(
+            await sendMarkdown(
                 chatId,
-                `🎁 ${name} ចាំបន្តិចមិនណា...`
+                `🎁 *${name}* ចាំបន្តិចមិនណា...`
             );
 
             const qrPath =
@@ -305,7 +325,7 @@ bot.on(
                 !fs.existsSync(qrPath)
             ) {
 
-                return bot.sendMessage(
+                return sendMarkdown(
                     chatId,
                     "❌ QR Code not found"
                 );
@@ -316,7 +336,9 @@ bot.on(
                 fs.createReadStream(qrPath),
                 {
                     caption:
-                    "💚 អរគុណសម្រាប់ការឧបត្ថម្ភ"
+                    "💚 អរគុណសម្រាប់ការឧបត្ថម្ភ",
+                    parse_mode:
+                    "Markdown"
                 }
             );
 
@@ -324,7 +346,7 @@ bot.on(
 
             console.log(err);
 
-            await bot.sendMessage(
+            await sendMarkdown(
                 chatId,
                 "❌ មិនអាចផ្ញើ QR បានទេ"
             );
@@ -344,16 +366,30 @@ async (msg, match) => {
     msg.chat.id;
 
     const url =
-    match[1];
+    match[1]?.trim();
+
+    const firstName =
+    msg.from.first_name || "";
+
+    const lastName =
+    msg.from.last_name || "";
 
     const name =
-    `${msg.from.first_name || ""} ${msg.from.last_name || ""}`.trim();
+    `${firstName} ${lastName}`.trim();
+
+    if (!url) {
+
+        return sendMarkdown(
+            chatId,
+            "❌ Invalid URL"
+        );
+    }
 
     try {
 
-        await bot.sendMessage(
+        await sendMarkdown(
             chatId,
-            "⏳ កំពុងស្វែងរកវីដេអូ..."
+            "⏳ *កំពុងស្វែងរកវីដេអូ...*"
         );
 
         const data =
@@ -365,55 +401,83 @@ async (msg, match) => {
             data.medias.length === 0
         ) {
 
-            return bot.sendMessage(
+            return sendMarkdown(
                 chatId,
-                `Sorry ${name} រកមិនឃើញតំណលីងទេ ;(`
+                `❌ Sorry *${name}* រកមិនឃើញតំណលីងទេ ;(`
             );
         }
 
         const media =
         data.medias.find(
-            m =>
+            (m) =>
             m.type &&
-            m.type.toLowerCase()
+            m.type
+            .toLowerCase()
             .includes("video")
         ) || data.medias[0];
 
         const caption = `
-🎬 ${data.title || "Video"}
+🎬 *${data.title || "Video"}*
 
 👤 ${data.author || "Unknown"}
 `;
 
-        await bot.sendPhoto(
-            chatId,
-            data.thumbnail ||
-            media.thumbnail ||
-            media.url,
-            {
-                caption,
-                reply_markup: {
-                    inline_keyboard: [
-                        [
-                            {
-                                text:
-                                "⬇️ Download Video",
-                                url:
-                                media.url
-                            }
+        if (data.thumbnail) {
+
+            await bot.sendPhoto(
+                chatId,
+                data.thumbnail,
+                {
+                    caption,
+                    parse_mode:
+                    "Markdown",
+                    reply_markup: {
+                        inline_keyboard: [
+                            [
+                                {
+                                    text:
+                                    "⬇️ Download Video",
+                                    url:
+                                    media.url
+                                }
+                            ]
                         ]
-                    ]
+                    }
                 }
-            }
-        );
+            );
+
+        } else {
+
+            await sendMarkdown(
+                chatId,
+                caption,
+                {
+                    reply_markup: {
+                        inline_keyboard: [
+                            [
+                                {
+                                    text:
+                                    "⬇️ Download Video",
+                                    url:
+                                    media.url
+                                }
+                            ]
+                        ]
+                    }
+                }
+            );
+        }
 
     } catch (err) {
 
-        console.log(err.response?.data || err.message);
+        console.log(
+            err.response?.data ||
+            err.message
+        );
 
-        await bot.sendMessage(
+        await sendMarkdown(
             chatId,
-            `Sorry ${name} រកមិនឃើញតំណលីងទេ ;(`
+            `❌ Sorry *${name}* រកមិនឃើញតំណលីងទេ ;(`
         );
     }
 });
@@ -430,16 +494,30 @@ async (msg, match) => {
     msg.chat.id;
 
     const url =
-    match[1];
+    match[1]?.trim();
+
+    const firstName =
+    msg.from.first_name || "";
+
+    const lastName =
+    msg.from.last_name || "";
 
     const name =
-    `${msg.from.first_name || ""} ${msg.from.last_name || ""}`.trim();
+    `${firstName} ${lastName}`.trim();
+
+    if (!url) {
+
+        return sendMarkdown(
+            chatId,
+            "❌ Invalid URL"
+        );
+    }
 
     try {
 
-        await bot.sendMessage(
+        await sendMarkdown(
             chatId,
-            "⏳ កំពុងស្វែងរក MP3..."
+            "⏳ *កំពុងស្វែងរក MP3...*"
         );
 
         const data =
@@ -451,34 +529,35 @@ async (msg, match) => {
             data.medias.length === 0
         ) {
 
-            return bot.sendMessage(
+            return sendMarkdown(
                 chatId,
-                `Sorry ${name} រកមិនឃើញតំណលីងទេ ;(`
+                `❌ Sorry *${name}* រកមិនឃើញតំណលីងទេ ;(`
             );
         }
 
         const media =
         data.medias.find(
-            m =>
+            (m) =>
             m.extension === "mp3" ||
             (
                 m.type &&
-                m.type.toLowerCase()
+                m.type
+                .toLowerCase()
                 .includes("audio")
             )
         );
 
         if (!media) {
 
-            return bot.sendMessage(
+            return sendMarkdown(
                 chatId,
-                "❌ មិនមាន MP3 សម្រាប់លីងនេះទេ"
+                "❌ មិនមាន MP3"
             );
         }
 
-        await bot.sendMessage(
+        await sendMarkdown(
             chatId,
-            `🎵 ${data.title || "MP3"}`,
+            `🎵 *${data.title || "MP3"}*`,
             {
                 reply_markup: {
                     inline_keyboard: [
@@ -497,11 +576,14 @@ async (msg, match) => {
 
     } catch (err) {
 
-        console.log(err.response?.data || err.message);
+        console.log(
+            err.response?.data ||
+            err.message
+        );
 
-        await bot.sendMessage(
+        await sendMarkdown(
             chatId,
-            `Sorry ${name} រកមិនឃើញតំណលីងទេ ;(`
+            `❌ Sorry *${name}* រកមិនឃើញតំណលីងទេ ;(`
         );
     }
 });
@@ -518,16 +600,30 @@ async (msg, match) => {
     msg.chat.id;
 
     const url =
-    match[1];
+    match[1]?.trim();
+
+    const firstName =
+    msg.from.first_name || "";
+
+    const lastName =
+    msg.from.last_name || "";
 
     const name =
-    `${msg.from.first_name || ""} ${msg.from.last_name || ""}`.trim();
+    `${firstName} ${lastName}`.trim();
+
+    if (!url) {
+
+        return sendMarkdown(
+            chatId,
+            "❌ Invalid URL"
+        );
+    }
 
     try {
 
-        await bot.sendMessage(
+        await sendMarkdown(
             chatId,
-            "⏳ កំពុងស្វែងរករូបភាព..."
+            "⏳ *កំពុងស្វែងរករូបភាព...*"
         );
 
         const data =
@@ -539,24 +635,24 @@ async (msg, match) => {
             data.medias.length === 0
         ) {
 
-            return bot.sendMessage(
+            return sendMarkdown(
                 chatId,
-                `Sorry ${name} រកមិនឃើញតំណលីងទេ ;(`
+                `❌ Sorry *${name}* រកមិនឃើញតំណលីងទេ ;(`
             );
         }
 
         const media =
         data.medias.find(
-            m =>
+            (m) =>
+            m.type &&
             (
-                m.type &&
-                (
-                    m.type.toLowerCase()
-                    .includes("image") ||
+                m.type
+                .toLowerCase()
+                .includes("image") ||
 
-                    m.type.toLowerCase()
-                    .includes("photo")
-                )
+                m.type
+                .toLowerCase()
+                .includes("photo")
             )
         ) || data.medias[0];
 
@@ -565,7 +661,9 @@ async (msg, match) => {
             media.url,
             {
                 caption:
-                `🖼 ${data.title || "Photo"}`,
+                `🖼 *${data.title || "Photo"}*`,
+                parse_mode:
+                "Markdown",
                 reply_markup: {
                     inline_keyboard: [
                         [
@@ -583,20 +681,23 @@ async (msg, match) => {
 
     } catch (err) {
 
-        console.log(err.response?.data || err.message);
+        console.log(
+            err.response?.data ||
+            err.message
+        );
 
-        await bot.sendMessage(
+        await sendMarkdown(
             chatId,
-            `Sorry ${name} រកមិនឃើញតំណលីងទេ ;(`
+            `❌ Sorry *${name}* រកមិនឃើញតំណលីងទេ ;(`
         );
     }
 });
 
 // ========================
-// LIST OWNER ONLY
+// LIST
 // ========================
 
-bot.onText(/\/list/, async (msg) => {
+bot.onText(/^\/list$/, async (msg) => {
 
     const username =
     msg.from.username || "";
@@ -606,25 +707,26 @@ bot.onText(/\/list/, async (msg) => {
         "Amertak_Network"
     ) {
 
-        return bot.sendMessage(
+        return sendMarkdown(
             msg.chat.id,
             "❌ Owner only"
         );
     }
 
-    const users = loadUsers();
+    const users =
+    loadUsers();
 
     let text =
-`📊 Monthly User: ${users.length}\n\n`;
+`📊 *Monthly User: ${users.length}*\n\n`;
 
     users.forEach(
-    (user, index) => {
+        (user, index) => {
 
         text +=
 `${index + 1}. ${user.name} [@${user.username}]\n`;
     });
 
-    await bot.sendMessage(
+    await sendMarkdown(
         msg.chat.id,
         text
     );
