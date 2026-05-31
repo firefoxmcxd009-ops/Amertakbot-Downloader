@@ -1,7 +1,7 @@
 {
   "name": "amertak-bot",
   "version": "1.0.0",
-  "description": "Amertak Telegram Downloader Bot",
+  "description": "Amertak Telegram YouTube Downloader Bot",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
@@ -10,10 +10,7 @@
     "telegram",
     "bot",
     "downloader",
-    "tiktok",
-    "instagram",
-    "youtube",
-    "facebook"
+    "youtube"
   ],
   "author": "Amertak_Network",
   "license": "MIT",
@@ -21,7 +18,8 @@
     "axios": "^1.7.2",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
-    "node-telegram-bot-api": "^0.66.0"
+    "node-telegram-bot-api": "^0.66.0",
+    "youtube-dl-exec": "^3.0.12"
   },
   "engines": {
     "node": ">=18.0.0"
