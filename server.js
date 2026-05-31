@@ -40,12 +40,29 @@ if (!RAPID_API_KEY) {
 
 let bot;
 
-function createBot() {
+async function deleteWebhook() {
+    try {
+        const res = await axios.get(
+            `https://api.telegram.org/bot${TOKEN}/deleteWebhook?drop_pending_updates=true`
+        );
+        console.log("✅ Webhook deleted:", res.data.result);
+    } catch (err) {
+        console.warn("⚠️ deleteWebhook failed:", err.message);
+    }
+}
+
+async function createBot() {
     if (bot) {
         try {
             bot.stopPolling();
         } catch (_) {}
     }
+
+    // Delete webhook first to avoid 409 conflict
+    await deleteWebhook();
+
+    // Small delay to let Telegram release the session
+    await new Promise((r) => setTimeout(r, 2000));
 
     bot = new TelegramBot(TOKEN, {
         polling: {
@@ -523,4 +540,6 @@ function registerHandlers() {
 // START
 // ========================
 
-createBot();
+createBot().catch((err) => {
+    console.error("❌ Failed to start bot:", err.message);
+});
