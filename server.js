@@ -33,21 +33,15 @@ const TOKEN = process.env.BOT_TOKEN;
 const RAPID_API_KEY = process.env.RAPID_API_KEY;
 
 // ========================
-// TELEGRAM BOT
+// BOT
 // ========================
 
 const bot = new TelegramBot(TOKEN, {
-    polling: {
-        interval: 300,
-        autoStart: true,
-        params: {
-            timeout: 10
-        }
-    }
+    polling: true
 });
 
 // ========================
-// EXPRESS SERVER
+// EXPRESS
 // ========================
 
 const app = express();
@@ -63,30 +57,30 @@ app.listen(PORT, () => {
 });
 
 // ========================
-// API CONFIG
+// API
 // ========================
 
 const API_URL =
 "https://social-download-all-in-one.p.rapidapi.com/v1/social/autolink";
 
 // ========================
-// USER DATABASE
+// USERS
 // ========================
 
 const USERS_FILE = "./data/users.json";
 
+if (!fs.existsSync("./data")) {
+    fs.mkdirSync("./data");
+}
+
+if (!fs.existsSync(USERS_FILE)) {
+    fs.writeFileSync(
+        USERS_FILE,
+        JSON.stringify([])
+    );
+}
+
 function loadUsers() {
-
-    if (!fs.existsSync("./data")) {
-        fs.mkdirSync("./data");
-    }
-
-    if (!fs.existsSync(USERS_FILE)) {
-        fs.writeFileSync(
-            USERS_FILE,
-            JSON.stringify([])
-        );
-    }
 
     return JSON.parse(
         fs.readFileSync(
@@ -121,7 +115,7 @@ function addUser(user) {
 }
 
 // ========================
-// FETCH MEDIA
+// FETCH API
 // ========================
 
 async function fetchMedia(url) {
@@ -149,52 +143,7 @@ async function fetchMedia(url) {
 }
 
 // ========================
-// FORMAT FILE SIZE
-// ========================
-
-function formatFileSize(bytes) {
-
-    if (!bytes || bytes === 0) {
-        return "Unknown";
-    }
-
-    const k = 1024;
-
-    const sizes = [
-        "Bytes",
-        "KB",
-        "MB",
-        "GB"
-    ];
-
-    const i = Math.floor(
-        Math.log(bytes) / Math.log(k)
-    );
-
-    return parseFloat(
-        (bytes / Math.pow(k, i)).toFixed(2)
-    ) + " " + sizes[i];
-}
-
-// ========================
-// FORMAT QUALITY
-// ========================
-
-function formatQuality(quality) {
-
-    if (!quality) return "Unknown";
-
-    return quality
-        .split("_")
-        .map(word =>
-            word.charAt(0).toUpperCase() +
-            word.slice(1)
-        )
-        .join(" ");
-}
-
-// ========================
-// START COMMAND
+// START
 // ========================
 
 bot.onText(/\/start/, async (msg) => {
@@ -211,7 +160,6 @@ bot.onText(/\/start/, async (msg) => {
     const name =
     `${firstName} ${lastName}`.trim();
 
-    // SAVE USER
     addUser({
         id: msg.from.id,
         name,
@@ -227,16 +175,16 @@ bot.onText(/\/start/, async (msg) => {
 
 📥 *Command សម្រាប់ប្រើ*
 
-/video (link)
+\`/video link\`
 🎬 ទាញយកវីដេអូ
 
-/mp3 (link)
+\`/mp3 link\`
 🎵 ទាញយក MP3
 
-/photo (link)
+\`/photo link\`
 🖼 ទាញយករូបភាព
 
-/help
+\`/help\`
 📖 បង្ហាញវិធីប្រើប្រាស់
 
 ━━━━━━━━━━━━━━
@@ -277,7 +225,7 @@ bot.onText(/\/start/, async (msg) => {
 });
 
 // ========================
-// HELP COMMAND
+// HELP
 // ========================
 
 bot.onText(/\/help/, async (msg) => {
@@ -287,19 +235,19 @@ bot.onText(/\/help/, async (msg) => {
 
 ━━━━━━━━━━━━━━
 
-🎬 *ទាញយកវីដេអូ*
+🎬 *Video*
 
 \`/video https://tiktok.com/xxxx\`
 
 ━━━━━━━━━━━━━━
 
-🎵 *ទាញយក MP3*
+🎵 *MP3*
 
 \`/mp3 https://youtube.com/xxxx\`
 
 ━━━━━━━━━━━━━━
 
-🖼 *ទាញយករូបភាព*
+🖼 *Photo*
 
 \`/photo https://instagram.com/xxxx\`
 
@@ -328,15 +276,6 @@ bot.on(
     const chatId =
     query.message.chat.id;
 
-    const firstName =
-    query.from.first_name || "";
-
-    const lastName =
-    query.from.last_name || "";
-
-    const name =
-    `${firstName} ${lastName}`.trim();
-
     if (query.data === "donate_qr") {
 
         try {
@@ -344,6 +283,15 @@ bot.on(
             await bot.answerCallbackQuery(
                 query.id
             );
+
+            const firstName =
+            query.from.first_name || "";
+
+            const lastName =
+            query.from.last_name || "";
+
+            const name =
+            `${firstName} ${lastName}`.trim();
 
             await bot.sendMessage(
                 chatId,
@@ -385,7 +333,7 @@ bot.on(
 });
 
 // ========================
-// VIDEO COMMAND
+// VIDEO
 // ========================
 
 bot.onText(
@@ -398,14 +346,8 @@ async (msg, match) => {
     const url =
     match[1];
 
-    const firstName =
-    msg.from.first_name || "";
-
-    const lastName =
-    msg.from.last_name || "";
-
     const name =
-    `${firstName} ${lastName}`.trim();
+    `${msg.from.first_name || ""} ${msg.from.last_name || ""}`.trim();
 
     try {
 
@@ -418,6 +360,7 @@ async (msg, match) => {
         await fetchMedia(url);
 
         if (
+            !data ||
             !data.medias ||
             data.medias.length === 0
         ) {
@@ -430,38 +373,43 @@ async (msg, match) => {
 
         const media =
         data.medias.find(
-            m => m.type === "video"
+            m =>
+            m.type &&
+            m.type.toLowerCase()
+            .includes("video")
         ) || data.medias[0];
 
-        let caption = `
-🎬 ${data.title || "Untitled"}
+        const caption = `
+🎬 ${data.title || "Video"}
 
 👤 ${data.author || "Unknown"}
-
-📦 ${formatFileSize(media.data_size)}
-
-🎞 ${formatQuality(media.quality)}
 `;
 
-        if (data.thumbnail) {
-
-            await bot.sendPhoto(
-                chatId,
-                data.thumbnail,
-                {
-                    caption
-                }
-            );
-        }
-
-        await bot.sendVideo(
+        await bot.sendPhoto(
             chatId,
-            media.url
+            data.thumbnail ||
+            media.thumbnail ||
+            media.url,
+            {
+                caption,
+                reply_markup: {
+                    inline_keyboard: [
+                        [
+                            {
+                                text:
+                                "⬇️ Download Video",
+                                url:
+                                media.url
+                            }
+                        ]
+                    ]
+                }
+            }
         );
 
     } catch (err) {
 
-        console.log(err.response?.data || err);
+        console.log(err.response?.data || err.message);
 
         await bot.sendMessage(
             chatId,
@@ -471,7 +419,7 @@ async (msg, match) => {
 });
 
 // ========================
-// MP3 COMMAND
+// MP3
 // ========================
 
 bot.onText(
@@ -484,14 +432,8 @@ async (msg, match) => {
     const url =
     match[1];
 
-    const firstName =
-    msg.from.first_name || "";
-
-    const lastName =
-    msg.from.last_name || "";
-
     const name =
-    `${firstName} ${lastName}`.trim();
+    `${msg.from.first_name || ""} ${msg.from.last_name || ""}`.trim();
 
     try {
 
@@ -504,6 +446,7 @@ async (msg, match) => {
         await fetchMedia(url);
 
         if (
+            !data ||
             !data.medias ||
             data.medias.length === 0
         ) {
@@ -518,7 +461,11 @@ async (msg, match) => {
         data.medias.find(
             m =>
             m.extension === "mp3" ||
-            m.type === "audio"
+            (
+                m.type &&
+                m.type.toLowerCase()
+                .includes("audio")
+            )
         );
 
         if (!media) {
@@ -529,18 +476,28 @@ async (msg, match) => {
             );
         }
 
-        await bot.sendAudio(
+        await bot.sendMessage(
             chatId,
-            media.url,
+            `🎵 ${data.title || "MP3"}`,
             {
-                caption:
-                `🎵 ${data.title || "Unknown"}`
+                reply_markup: {
+                    inline_keyboard: [
+                        [
+                            {
+                                text:
+                                "⬇️ Download MP3",
+                                url:
+                                media.url
+                            }
+                        ]
+                    ]
+                }
             }
         );
 
     } catch (err) {
 
-        console.log(err.response?.data || err);
+        console.log(err.response?.data || err.message);
 
         await bot.sendMessage(
             chatId,
@@ -550,7 +507,7 @@ async (msg, match) => {
 });
 
 // ========================
-// PHOTO COMMAND
+// PHOTO
 // ========================
 
 bot.onText(
@@ -563,14 +520,8 @@ async (msg, match) => {
     const url =
     match[1];
 
-    const firstName =
-    msg.from.first_name || "";
-
-    const lastName =
-    msg.from.last_name || "";
-
     const name =
-    `${firstName} ${lastName}`.trim();
+    `${msg.from.first_name || ""} ${msg.from.last_name || ""}`.trim();
 
     try {
 
@@ -583,6 +534,7 @@ async (msg, match) => {
         await fetchMedia(url);
 
         if (
+            !data ||
             !data.medias ||
             data.medias.length === 0
         ) {
@@ -596,8 +548,16 @@ async (msg, match) => {
         const media =
         data.medias.find(
             m =>
-            m.type === "photo" ||
-            m.type === "image"
+            (
+                m.type &&
+                (
+                    m.type.toLowerCase()
+                    .includes("image") ||
+
+                    m.type.toLowerCase()
+                    .includes("photo")
+                )
+            )
         ) || data.medias[0];
 
         await bot.sendPhoto(
@@ -605,13 +565,25 @@ async (msg, match) => {
             media.url,
             {
                 caption:
-                `🖼 ${data.title || "Photo"}`
+                `🖼 ${data.title || "Photo"}`,
+                reply_markup: {
+                    inline_keyboard: [
+                        [
+                            {
+                                text:
+                                "⬇️ Download Photo",
+                                url:
+                                media.url
+                            }
+                        ]
+                    ]
+                }
             }
         );
 
     } catch (err) {
 
-        console.log(err.response?.data || err);
+        console.log(err.response?.data || err.message);
 
         await bot.sendMessage(
             chatId,
@@ -621,7 +593,7 @@ async (msg, match) => {
 });
 
 // ========================
-// OWNER LIST
+// LIST OWNER ONLY
 // ========================
 
 bot.onText(/\/list/, async (msg) => {
@@ -629,7 +601,6 @@ bot.onText(/\/list/, async (msg) => {
     const username =
     msg.from.username || "";
 
-    // OWNER ONLY
     if (
         username !==
         "Amertak_Network"
