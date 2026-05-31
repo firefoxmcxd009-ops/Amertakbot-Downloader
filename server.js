@@ -35,6 +35,21 @@ if (!RAPID_API_KEY) {
 }
 
 // ========================
+// OWNER CONFIG
+// ========================
+
+// 1. វាយ /id ក្នុង bot ដើម្បីរក ID
+// 2. ដាក់ OWNER_ID=លេខ ក្នុង .env នៅ Render
+const OWNER_ID = process.env.OWNER_ID
+    ? parseInt(process.env.OWNER_ID)
+    : null;
+
+function isOwner(from) {
+    if (!OWNER_ID) return false;
+    return from?.id === OWNER_ID;
+}
+
+// ========================
 // BOT (polling with auto-restart)
 // ========================
 
@@ -78,19 +93,13 @@ async function createBot() {
         const code = err?.code || "";
         const msg = err?.message || "";
 
-        if (
-            code === "ETELEGRAM" &&
-            msg.includes("409")
-        ) {
+        if (code === "ETELEGRAM" && msg.includes("409")) {
             console.warn("⚠️ Polling conflict (409). Restarting in 5s...");
             setTimeout(() => createBot(), 5000);
             return;
         }
 
-        if (
-            code === "EFATAL" ||
-            code === "EPARSE"
-        ) {
+        if (code === "EFATAL" || code === "EPARSE") {
             console.warn(`⚠️ Polling error [${code}]. Restarting in 5s...`);
             setTimeout(() => createBot(), 5000);
             return;
@@ -310,6 +319,32 @@ function registerHandlers() {
         await sendMarkdown(msg.chat.id, text);
     });
 
+    // ── ID ─────────────────────────────────────────────
+
+    bot.onText(/^\/id$/, async (msg) => {
+        const name = getName(msg.from);
+        const userId = msg.from?.id;
+        const username = msg.from?.username
+            ? `@${msg.from.username}`
+            : "មិនមាន";
+
+        const text = `
+👤 *ព័ត៌មានរបស់អ្នក*
+
+━━━━━━━━━━━━━━
+
+🪪 *ID:* \`${userId}\`
+📛 *ឈ្មោះ:* ${name}
+🔗 *Username:* ${username}
+
+━━━━━━━━━━━━━━
+
+💡 Copy លេខ ID ខាងលើ ហើយដាក់ជា \`OWNER_ID\` ក្នុង Render Environment
+`;
+
+        await sendMarkdown(msg.chat.id, text);
+    });
+
     // ── DONATE CALLBACK ────────────────────────────────
 
     bot.on("callback_query", async (query) => {
@@ -518,9 +553,7 @@ function registerHandlers() {
     // ── LIST (owner only) ──────────────────────────────
 
     bot.onText(/^\/list$/, async (msg) => {
-        const username = msg.from?.username || "";
-
-        if (username !== "Amertak_Network") {
+        if (!isOwner(msg.from)) {
             return sendMarkdown(msg.chat.id, "❌ Owner only");
         }
 
