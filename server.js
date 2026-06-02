@@ -15,12 +15,10 @@ const TOKEN =
 const OWNER_ID =
     process.env.OWNER_ID;
 
-// YOUR API
 const API_BASE =
     process.env.API_BASE ||
     "https://YOUR-RENDER-URL.onrender.com";
 
-// YOUR API KEY
 const API_KEY =
     process.env.API_KEY ||
     "amertak_super_key_2026";
@@ -87,7 +85,8 @@ function saveUsers(set) {
 
 }
 
-const users = loadUsers();
+const users =
+    loadUsers();
 
 function addUser(id) {
 
@@ -102,14 +101,26 @@ function addUser(id) {
 }
 
 // ========================
-// STATE
+// STATES
 // ========================
 
 const userStates = {};
+const askStates = {};
 
 // ========================
 // HELPERS
 // ========================
+
+function isImage(url = "") {
+
+    return (
+        url.includes(".jpg") ||
+        url.includes(".jpeg") ||
+        url.includes(".png") ||
+        url.includes(".webp")
+    );
+
+}
 
 function formatQuality(q) {
 
@@ -124,17 +135,6 @@ function formatQuality(q) {
                 w.slice(1)
         )
         .join(" ");
-
-}
-
-function isImage(url = "") {
-
-    return (
-        url.includes(".jpg") ||
-        url.includes(".jpeg") ||
-        url.includes(".png") ||
-        url.includes(".webp")
-    );
 
 }
 
@@ -214,7 +214,9 @@ async function fetchVideo(
 
     } catch (err) {
 
-        console.error(err?.response?.data || err);
+        console.error(
+            err?.response?.data || err
+        );
 
         await bot.deleteMessage(
             chatId,
@@ -223,7 +225,11 @@ async function fetchVideo(
 
         await bot.sendMessage(
             chatId,
-            `❌ API Error\n\n${err?.response?.data?.message || err.message}`
+
+`❌ API Error
+
+${err?.response?.data?.message || err.message}`
+
         );
 
         return null;
@@ -236,7 +242,10 @@ async function fetchVideo(
 // FIND MEDIA
 // ========================
 
-function findMedia(data, type) {
+function findMedia(
+    data,
+    type
+) {
 
     if (!data?.medias)
         return null;
@@ -398,7 +407,7 @@ async function sendFile(
 }
 
 // ========================
-// START
+// /START
 // ========================
 
 bot.onText(
@@ -412,15 +421,38 @@ bot.onText(
 
 `🎬 AMERTAK DOWNLOADER
 
-Supported:
+📥 Supported Platforms:
 • TikTok
 • YouTube
 • Instagram
 • Pinterest
 • Spotify
 
-Send URL to download.`,
+━━━━━━━━━━━━━━━
 
+📖 How To Use
+
+1️⃣ Send video/image/music URL
+
+2️⃣ Choose format:
+• 🎬 Video
+• 🖼 Image
+• 🎵 MP3
+
+3️⃣ Wait bot processing
+
+4️⃣ Download completed ✅
+
+━━━━━━━━━━━━━━━
+
+💬 Need help?
+Use:
+/ask your message
+
+Example:
+/ask Hello owner`
+
+,
 {
     reply_markup: {
         inline_keyboard: [
@@ -462,6 +494,125 @@ bot.onText(
 📛 Username: @${msg.from.username || "no_username"}`
 
     );
+
+});
+
+// ========================
+// /ASK
+// ========================
+
+bot.onText(
+    /\/ask (.+)/,
+    async (msg, match) => {
+
+    const chatId =
+        msg.chat.id;
+
+    const user =
+        msg.from;
+
+    const question =
+        match[1];
+
+    askStates[user.id] = {
+        chatId
+    };
+
+    // WAIT MESSAGE
+    await bot.sendMessage(
+        chatId,
+        "⏳អ្នកនឹងទទួលបានការឆ្លើយតបនៅពេល owner បានឃើញ!"
+    );
+
+    // SEND TO OWNER
+    await bot.sendMessage(
+        OWNER_ID,
+
+`📩 New Ask Message
+
+👤 Name:
+${user.first_name || "Unknown"}
+
+🆔 User ID:
+${user.id}
+
+📛 Username:
+@${user.username || "no_username"}
+
+━━━━━━━━━━━━━━━
+
+💬 Message:
+
+${question}
+
+━━━━━━━━━━━━━━━
+
+Reply Using:
+
+/reply ${user.id} your message`
+
+    );
+
+});
+
+// ========================
+// /REPLY
+// ========================
+
+bot.onText(
+    /\/reply (\d+) (.+)/,
+    async (msg, match) => {
+
+    const chatId =
+        msg.chat.id;
+
+    // OWNER ONLY
+    if (
+        String(chatId) !==
+        String(OWNER_ID)
+    ) {
+
+        return bot.sendMessage(
+            chatId,
+            "❌ Not allowed"
+        );
+
+    }
+
+    const userId =
+        match[1];
+
+    const replyText =
+        match[2];
+
+    try {
+
+        await bot.sendMessage(
+            userId,
+
+`📩 Reply From Owner
+
+━━━━━━━━━━━━━━━
+
+${replyText}`
+
+        );
+
+        await bot.sendMessage(
+            chatId,
+            "✅ Reply sent"
+        );
+
+    } catch (err) {
+
+        console.error(err);
+
+        await bot.sendMessage(
+            chatId,
+            "❌ Failed to send reply"
+        );
+
+    }
 
 });
 
@@ -530,7 +681,7 @@ bot.onText(
 });
 
 // ========================
-// MAIN HANDLER
+// MAIN MESSAGE
 // ========================
 
 bot.on(
@@ -585,17 +736,13 @@ bot.on(
 
         }
 
-        // CHECK MEDIA
+        // BUTTONS
+        const keyboard = [];
+
         const hasVideo =
             findMedia(
                 data,
                 "video"
-            );
-
-        const hasAudio =
-            findMedia(
-                data,
-                "mp3"
             );
 
         const hasImage =
@@ -604,9 +751,13 @@ bot.on(
                 "image"
             );
 
-        const keyboard = [];
+        const hasAudio =
+            findMedia(
+                data,
+                "mp3"
+            );
 
-        // VIDEO BUTTON
+        // VIDEO
         if (hasVideo) {
 
             keyboard.push([
@@ -619,7 +770,7 @@ bot.on(
 
         }
 
-        // IMAGE BUTTON
+        // IMAGE
         if (hasImage) {
 
             keyboard.push([
@@ -632,7 +783,7 @@ bot.on(
 
         }
 
-        // AUDIO BUTTON
+        // AUDIO
         if (hasAudio) {
 
             keyboard.push([
@@ -676,7 +827,7 @@ bot.on(
 });
 
 // ========================
-// CALLBACK
+// CALLBACK QUERY
 // ========================
 
 bot.on(
