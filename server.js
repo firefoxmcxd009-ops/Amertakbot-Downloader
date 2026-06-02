@@ -1,33 +1,29 @@
 require("dotenv").config();
 
 const fs = require("fs");
-const TelegramBot = require("node-telegram-bot-api");
 const express = require("express");
 const axios = require("axios");
+const TelegramBot = require("node-telegram-bot-api");
 
 // ========================
 // CONFIG
 // ========================
 const TOKEN = process.env.BOT_TOKEN;
 const OWNER_ID = process.env.OWNER_ID;
-
 const API_BASE = process.env.API_BASE;
 const API_KEY = process.env.API_KEY || "amertak_super_key_2026";
 
 // ========================
-// BOT
+// INIT
 // ========================
 const bot = new TelegramBot(TOKEN, { polling: true });
 
-// ========================
-// EXPRESS
-// ========================
 const app = express();
-app.get("/", (_, res) => res.send("Bot កំពុងដំណើរការ"));
+app.get("/", (_, res) => res.send("Bot Running OK"));
 app.listen(process.env.PORT || 3000);
 
 // ========================
-// USERS DB
+// DATABASE (users.json)
 // ========================
 const DB_FILE = "./users.json";
 
@@ -50,7 +46,7 @@ function addUser(id) {
 }
 
 // ========================
-// STATES
+// STATE
 // ========================
 const userStates = {};
 
@@ -58,19 +54,13 @@ const userStates = {};
 // HELPERS
 // ========================
 function isImage(url = "") {
-    return (
-        url.includes(".jpg") ||
-        url.includes(".jpeg") ||
-        url.includes(".png") ||
-        url.includes(".webp")
-    );
+    return /\.(jpg|jpeg|png|webp)/i.test(url);
 }
 
 // ========================
-// FETCH VIDEO
+// FETCH MEDIA INFO
 // ========================
 async function fetchVideo(chatId, url) {
-
     const loading = await bot.sendMessage(chatId, "កំពុងស្វែងរក...");
 
     try {
@@ -90,7 +80,7 @@ async function fetchVideo(chatId, url) {
 }
 
 // ========================
-// FIND MEDIA
+// MEDIA FINDER
 // ========================
 function findMedia(data, type) {
     if (!data?.medias) return null;
@@ -104,20 +94,22 @@ function findMedia(data, type) {
     }
 
     if (type === "image") {
-        return data.medias.find(m => m.type === "image" || isImage(m.url));
+        return data.medias.find(
+            m => m.type === "image" || isImage(m.url)
+        );
     }
 
     return null;
 }
 
 // ========================
-// REAL PROGRESS DOWNLOAD
+// REAL PROGRESS DOWNLOADER
 // ========================
 async function sendFile(chatId, media, data) {
 
     const msg = await bot.sendMessage(
         chatId,
-        "កំពុងទាញយកឯកសារ...\n0%"
+        "កំពុងទាញយក...\n0%"
     );
 
     try {
@@ -130,7 +122,7 @@ async function sendFile(chatId, media, data) {
         let downloaded = 0;
         const chunks = [];
 
-        response.data.on("data", (chunk) => {
+        response.data.on("data", chunk => {
             downloaded += chunk.length;
             chunks.push(chunk);
 
@@ -146,7 +138,7 @@ async function sendFile(chatId, media, data) {
                                "■■■■■";
 
             bot.editMessageText(
-                `កំពុងទាញយកឯកសារ...\n${bar} ${percent}%`,
+                `កំពុងទាញយក...\n${bar} ${percent}%`,
                 {
                     chat_id: chatId,
                     message_id: msg.message_id
@@ -160,25 +152,25 @@ async function sendFile(chatId, media, data) {
 
             if (media.type === "audio") {
                 await bot.sendAudio(chatId, buffer, {
-                    caption: data.title || "សំឡេង"
+                    caption: data.title || "Audio"
                 });
             }
 
             else if (media.type === "video") {
                 await bot.sendVideo(chatId, buffer, {
-                    caption: data.title || "វីដេអូ"
+                    caption: data.title || "Video"
                 });
             }
 
             else if (media.type === "image" || isImage(media.url)) {
                 await bot.sendPhoto(chatId, buffer, {
-                    caption: data.title || "រូបភាព"
+                    caption: data.title || "Image"
                 });
             }
 
             else {
                 await bot.sendDocument(chatId, buffer, {
-                    caption: data.title || "ឯកសារ"
+                    caption: data.title || "File"
                 });
             }
 
@@ -186,31 +178,31 @@ async function sendFile(chatId, media, data) {
         });
 
         response.data.on("error", async () => {
-            await bot.sendMessage(chatId, "បរាជ័យក្នុងការទាញយក");
-            await bot.deleteMessage(chatId, msg.message_id).catch(() => {});
+            await bot.sendMessage(chatId, "Download បរាជ័យ");
         });
 
     } catch (err) {
-        await bot.sendMessage(chatId, "មានបញ្ហាក្នុងការទាញយក");
-        await bot.deleteMessage(chatId, msg.message_id).catch(() => {});
+        await bot.sendMessage(chatId, "Server Error");
     }
 }
 
 // ========================
 // START
 // ========================
-bot.onText(/\/start/, async (msg) => {
+bot.onText(/\/start/, async msg => {
 
-    const fullName =
-        (msg.from.first_name || "") + " " + (msg.from.last_name || "");
+    const name =
+        (msg.from.first_name || "") +
+        " " +
+        (msg.from.last_name || "");
 
     addUser(msg.chat.id);
 
     await bot.sendMessage(msg.chat.id,
-`សូមស្វាគមន៍ ${fullName}
+`សូមស្វាគមន៍ ${name}
 
 📌 របៀបប្រើ:
-- ផ្ញើ Link
+- ផ្ញើ link
 - ជ្រើស format
 - រងចាំ download
 
@@ -218,7 +210,12 @@ bot.onText(/\/start/, async (msg) => {
 {
     reply_markup: {
         inline_keyboard: [[
-            { text: "Tools", web_app: { url: "https://tools-amertak.vercel.app" } }
+            {
+                text: "Tools",
+                web_app: {
+                    url: "https://tools-amertak.vercel.app"
+                }
+            }
         ]]
     }
 });
@@ -226,27 +223,32 @@ bot.onText(/\/start/, async (msg) => {
 });
 
 // ========================
-// ASK (USER → OWNER)
+// ASK SYSTEM
 // ========================
 bot.onText(/\/ask (.+)/, async (msg, match) => {
 
     const question = match[1];
 
-    await bot.sendMessage(msg.chat.id,
+    await bot.sendMessage(
+        msg.chat.id,
         "⏳ អ្នកនឹងទទួលបានការឆ្លើយតប ពេល owner ឃើញ"
     );
 
     await bot.sendMessage(OWNER_ID,
 `📩 New Ask
 
-👤 Name: ${msg.from.first_name}
-🆔 ID: ${msg.from.id}
+Name: ${msg.from.first_name}
+ID: ${msg.from.id}
 
-💬 ${question}`,
+Message:
+${question}`,
 {
     reply_markup: {
         inline_keyboard: [[
-            { text: "Reply", callback_data: `reply_${msg.from.id}` }
+            {
+                text: "Reply",
+                callback_data: `reply_${msg.from.id}`
+            }
         ]]
     }
 });
@@ -254,22 +256,23 @@ bot.onText(/\/ask (.+)/, async (msg, match) => {
 });
 
 // ========================
-// CALLBACK (FIX REPLY UX)
+// CALLBACK HANDLER
 // ========================
-bot.on("callback_query", async (query) => {
+bot.on("callback_query", async query => {
 
     const chatId = query.message.chat.id;
     const action = query.data;
 
     await bot.answerCallbackQuery(query.id);
 
-    // 🔥 FIX REPLY BUTTON
+    // 🔥 OWNER REPLY BUTTON
     if (action.startsWith("reply_")) {
+
         const id = action.split("_")[1];
 
         return bot.sendMessage(
             chatId,
-            `➡️ Reply user ID: ${id}\nសរសេរ message ខាងក្រោម:\n\n/reply ${id} `
+            `👉 Reply to user ID: ${id}\n\nType:\n/reply ${id} `
         );
     }
 
@@ -283,9 +286,9 @@ bot.on("callback_query", async (query) => {
 });
 
 // ========================
-// MAIN MESSAGE
+// MAIN MESSAGE HANDLER
 // ========================
-bot.on("message", async (msg) => {
+bot.on("message", async msg => {
 
     const chatId = msg.chat.id;
     const text = msg.text;
@@ -294,38 +297,37 @@ bot.on("message", async (msg) => {
 
     addUser(chatId);
 
-    if (text.startsWith("http")) {
-
-        const data = await fetchVideo(chatId, text);
-        if (!data) return;
-
-        userStates[chatId] = { data };
-
-        if (data.thumbnail) {
-            await bot.sendPhoto(chatId, data.thumbnail, {
-                caption: data.title || "Media"
-            });
-        }
-
-        const keyboard = [];
-
-        if (findMedia(data, "video")) {
-            keyboard.push([{ text: "Video", callback_data: "video" }]);
-        }
-
-        if (findMedia(data, "image")) {
-            keyboard.push([{ text: "Image", callback_data: "image" }]);
-        }
-
-        if (findMedia(data, "mp3")) {
-            keyboard.push([{ text: "Audio", callback_data: "mp3" }]);
-        }
-
-        return bot.sendMessage(chatId,
-            "Choose format",
-            { reply_markup: { inline_keyboard: keyboard } }
-        );
+    if (!text.startsWith("http")) {
+        return bot.sendMessage(chatId, "សូមផ្ញើ Link");
     }
 
-    return bot.sendMessage(chatId, "Send valid link");
+    const data = await fetchVideo(chatId, text);
+    if (!data) return;
+
+    userStates[chatId] = { data };
+
+    if (data.thumbnail) {
+        await bot.sendPhoto(chatId, data.thumbnail, {
+            caption: data.title || "Media"
+        });
+    }
+
+    const keyboard = [];
+
+    if (findMedia(data, "video")) {
+        keyboard.push([{ text: "Video", callback_data: "video" }]);
+    }
+
+    if (findMedia(data, "image")) {
+        keyboard.push([{ text: "Image", callback_data: "image" }]);
+    }
+
+    if (findMedia(data, "mp3")) {
+        keyboard.push([{ text: "Audio", callback_data: "mp3" }]);
+    }
+
+    return bot.sendMessage(chatId,
+        "ជ្រើសរើស format",
+        { reply_markup: { inline_keyboard: keyboard } }
+    );
 });
