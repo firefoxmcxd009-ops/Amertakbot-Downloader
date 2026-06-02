@@ -543,15 +543,21 @@ ${user.id}
 
 💬 Message:
 
-${question}
+${question}`,
 
-━━━━━━━━━━━━━━━
-
-Reply Using:
-
-/reply ${user.id} your message`
-
-    );
+{
+    reply_markup: {
+        inline_keyboard: [
+            [
+                {
+                    text: "💬 Reply",
+                    switch_inline_query_current_chat:
+                        `/reply ${user.id} `
+                }
+            ]
+        ]
+    }
+});
 
 });
 
