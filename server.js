@@ -16,8 +16,7 @@ const OWNER_ID =
     process.env.OWNER_ID;
 
 const API_BASE =
-    process.env.API_BASE ||
-    "https://YOUR-RENDER-URL.onrender.com";
+    process.env.API_BASE;
 
 const API_KEY =
     process.env.API_KEY ||
@@ -159,11 +158,11 @@ async function progressBar(
     for (let i = 0; i < steps.length; i++) {
 
         await new Promise(
-            r => setTimeout(r, 350)
+            r => setTimeout(r, 450)
         );
 
         await bot.editMessageText(
-            `📥 Downloading...\n\n${steps[i]}`,
+            `📥 កំពុងទាញយក...\n\n${steps[i]}`,
             {
                 chat_id: chatId,
                 message_id: msgId
@@ -186,7 +185,7 @@ async function fetchVideo(
     const loading =
         await bot.sendMessage(
             chatId,
-            "⏳ Processing..."
+            "⏳ កំពុងស្វែងរកតំណលីង..."
         );
 
     try {
@@ -333,7 +332,7 @@ async function sendFile(
                 stream.data,
                 {
                     caption:
-                        `🎵 ${data.title || "Audio"}`
+                        `🎵 ${data.title || "Amertak Audio"}`
                 }
             );
 
@@ -350,7 +349,7 @@ async function sendFile(
                 stream.data,
                 {
                     caption:
-                        `🎬 ${data.title || "Video"}`
+                        `🎬 ${data.title || "Amertak Video"}`
                 }
             );
 
@@ -368,7 +367,7 @@ async function sendFile(
                 stream.data,
                 {
                     caption:
-                        `🖼 ${data.title || "Image"}`
+                        `🖼 ${data.title || "Amertak Image"}`
                 }
             );
 
@@ -382,7 +381,7 @@ async function sendFile(
                 stream.data,
                 {
                     caption:
-                        `📁 ${data.title || "File"}`
+                        `📁 ${data.title || "Amertak File"}`
                 }
             );
 
@@ -409,6 +408,7 @@ async function sendFile(
 // ========================
 // /START
 // ========================
+const fullName = msg.from.first_name || "" + msg.from.last_name || "";
 
 bot.onText(
     /\/start/,
@@ -419,38 +419,30 @@ bot.onText(
     await bot.sendMessage(
         msg.chat.id,
 
-`🎬 AMERTAK DOWNLOADER
-
-📥 Supported Platforms:
-• TikTok
-• YouTube
-• Instagram
-• Pinterest
-• Spotify
-
+`សូមស្វាគមន៍ ${fullName} មកកាន់ Amertak Downloader
 ━━━━━━━━━━━━━━━
 
-📖 How To Use
+📖​របៀបប្រើៈ
 
-1️⃣ Send video/image/music URL
+1️⃣ ផ្ញើរលីងទៅកាន់ Bot
 
-2️⃣ Choose format:
-• 🎬 Video
-• 🖼 Image
-• 🎵 MP3
+2️⃣ ជ្រើសរើស formate:
+• វីដេអូ
+• រូបភាព
+• សំលេង/mp3
 
-3️⃣ Wait bot processing
+3️⃣ រងចាំស្វែងរក url information
 
 4️⃣ Download completed ✅
 
 ━━━━━━━━━━━━━━━
 
-💬 Need help?
-Use:
-/ask your message
+💬 មានបញ្ហាអំពី Bot?
+វាយ:
+/ask សាររបស់អ្នក
 
 Example:
-/ask Hello owner`
+/ask សួរស្តី! មិនអាចទាញយកវីដេអូបានទេ`
 
 ,
 {
@@ -458,7 +450,7 @@ Example:
         inline_keyboard: [
             [
                 {
-                    text: "🔵 Tools",
+                    text: "ប្រើច្រើនជាងនេះ",
                     web_app: {
                         url: "https://tools-amertak.vercel.app"
                     }
@@ -487,11 +479,11 @@ bot.onText(
     await bot.sendMessage(
         chatId,
 
-`🆔 Your Telegram Info
+`🆔 ព័ត៌មាន Telegram របស់អ្នកៈ
 
 👤 User ID: ${userId}
 💬 Chat ID: ${chatId}
-📛 Username: @${msg.from.username || "no_username"}`
+📛 Username: @${msg.from.username || "មិនមាន Username"}`
 
     );
 
@@ -540,24 +532,16 @@ ${user.id}
 @${user.username || "no_username"}
 
 ━━━━━━━━━━━━━━━
-
 💬 Message:
 
-${question}`,
+${question}
+━━━━━━━━━━━━━━━
 
-{
-    reply_markup: {
-        inline_keyboard: [
-            [
-                {
-                    text: "💬 Reply",
-                    switch_inline_query_current_chat:
-                        `/reply ${user.id} `
-                }
-            ]
-        ]
-    }
-});
+Reply Using:
+
+/reply ${user.id} message`
+
+    );
 
 });
 
@@ -596,7 +580,7 @@ bot.onText(
         await bot.sendMessage(
             userId,
 
-`📩 Reply From Owner
+`📩 Reply From Owner (Amertak Network)[@Amertak_Network]
 
 ━━━━━━━━━━━━━━━
 
@@ -606,7 +590,7 @@ ${replyText}`
 
         await bot.sendMessage(
             chatId,
-            "✅ Reply sent"
+            "✅ បានឆ្លើយតប"
         );
 
     } catch (err) {
@@ -615,7 +599,7 @@ ${replyText}`
 
         await bot.sendMessage(
             chatId,
-            "❌ Failed to send reply"
+            "❌ ការឆ្លើយតបមិនដំណើរការ"
         );
 
     }
@@ -677,7 +661,7 @@ bot.onText(
     return bot.sendMessage(
         chatId,
 
-`✅ Broadcast Done
+`✅ សារជូនដំណឹងបានបញ្ជូន
 
 📤 Sent: ${sent}
 ❌ Failed: ${failed}`
@@ -734,9 +718,9 @@ bot.on(
                     caption:
 `📌 ${data.title || "Untitled"}
 
-👤 ${data.author || "Unknown"}
+👤 ${data.author || "Amertak"}
 
-🌐 ${data.platform || "Unknown"}`
+🌐 ${data.platform || "Amertak"}`
                 }
             );
 
@@ -768,7 +752,7 @@ bot.on(
 
             keyboard.push([
                 {
-                    text: "🎬 Video",
+                    text: "វីដេអូ",
                     callback_data:
                         "video"
                 }
@@ -781,7 +765,7 @@ bot.on(
 
             keyboard.push([
                 {
-                    text: "🖼 Image",
+                    text: "រូបភាព",
                     callback_data:
                         "image"
                 }
@@ -794,7 +778,7 @@ bot.on(
 
             keyboard.push([
                 {
-                    text: "🎵 MP3",
+                    text: "សំឡេង",
                     callback_data:
                         "mp3"
                 }
@@ -805,7 +789,7 @@ bot.on(
         // TOOLS
         keyboard.push([
             {
-                text: "🔵 Tools",
+                text: "ប្រើច្រើនជាងនេះ",
                 web_app: {
                     url: "https://tools-amertak.vercel.app"
                 }
@@ -814,7 +798,7 @@ bot.on(
 
         return bot.sendMessage(
             chatId,
-            "📂 Choose format",
+            "📂 ជ្រើសរើស format",
             {
                 reply_markup: {
                     inline_keyboard:
@@ -827,7 +811,7 @@ bot.on(
 
     return bot.sendMessage(
         chatId,
-        "📎 Send valid URL"
+        "📎 សូមផ្ញើលីងមកខ្ញុំ"
     );
 
 });
@@ -872,7 +856,7 @@ bot.on(
 
         return bot.sendMessage(
             chatId,
-            "❌ Media not found"
+            "❌ រកមិនឃើញ media"
         );
 
     }
