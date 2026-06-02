@@ -67,6 +67,50 @@ function isImage(url = "") {
 }
 
 // ========================
+// FETCH VIDEO
+// ========================
+async function fetchVideo(chatId, url) {
+
+    const loading = await bot.sendMessage(chatId, "កំពុងស្វែងរក...");
+
+    try {
+        const res = await axios.get(`${API_BASE}/api/download`, {
+            params: { url },
+            headers: { "x-api-key": API_KEY }
+        });
+
+        await bot.deleteMessage(chatId, loading.message_id).catch(() => {});
+        return res.data;
+
+    } catch (err) {
+        await bot.deleteMessage(chatId, loading.message_id).catch(() => {});
+        await bot.sendMessage(chatId, "API មានបញ្ហា");
+        return null;
+    }
+}
+
+// ========================
+// FIND MEDIA
+// ========================
+function findMedia(data, type) {
+    if (!data?.medias) return null;
+
+    if (type === "video") {
+        return data.medias.find(m => m.type === "video");
+    }
+
+    if (type === "mp3") {
+        return data.medias.find(m => m.type === "audio");
+    }
+
+    if (type === "image") {
+        return data.medias.find(m => m.type === "image" || isImage(m.url));
+    }
+
+    return null;
+}
+
+// ========================
 // REAL PROGRESS DOWNLOAD
 // ========================
 async function sendFile(chatId, media, data) {
@@ -77,13 +121,10 @@ async function sendFile(chatId, media, data) {
     );
 
     try {
-        const response = await axios.get(
-            `${API_BASE}/api/proxy`,
-            {
-                responseType: "stream",
-                params: { url: media.url }
-            }
-        );
+        const response = await axios.get(`${API_BASE}/api/proxy`, {
+            responseType: "stream",
+            params: { url: media.url }
+        });
 
         const total = parseInt(response.headers["content-length"] || "0");
         let downloaded = 0;
@@ -93,13 +134,11 @@ async function sendFile(chatId, media, data) {
             downloaded += chunk.length;
             chunks.push(chunk);
 
-            let percent = total
+            const percent = total
                 ? Math.floor((downloaded / total) * 100)
                 : 0;
 
-            if (percent > 100) percent = 100;
-
-            let bar =
+            const bar =
                 percent < 20 ? "■□□□□" :
                 percent < 40 ? "■■□□□" :
                 percent < 60 ? "■■■□□" :
@@ -158,50 +197,6 @@ async function sendFile(chatId, media, data) {
 }
 
 // ========================
-// FETCH VIDEO
-// ========================
-async function fetchVideo(chatId, url) {
-
-    const loading = await bot.sendMessage(chatId, "កំពុងស្វែងរក...");
-
-    try {
-        const res = await axios.get(`${API_BASE}/api/download`, {
-            params: { url },
-            headers: { "x-api-key": API_KEY }
-        });
-
-        await bot.deleteMessage(chatId, loading.message_id).catch(() => {});
-        return res.data;
-
-    } catch (err) {
-        await bot.deleteMessage(chatId, loading.message_id).catch(() => {});
-        await bot.sendMessage(chatId, "API មានបញ្ហា");
-        return null;
-    }
-}
-
-// ========================
-// FIND MEDIA
-// ========================
-function findMedia(data, type) {
-    if (!data?.medias) return null;
-
-    if (type === "video") {
-        return data.medias.find(m => m.type === "video");
-    }
-
-    if (type === "mp3") {
-        return data.medias.find(m => m.type === "audio");
-    }
-
-    if (type === "image") {
-        return data.medias.find(m => m.type === "image" || isImage(m.url));
-    }
-
-    return null;
-}
-
-// ========================
 // START
 // ========================
 bot.onText(/\/start/, async (msg) => {
@@ -214,16 +209,16 @@ bot.onText(/\/start/, async (msg) => {
     await bot.sendMessage(msg.chat.id,
 `សូមស្វាគមន៍ ${fullName}
 
-របៀបប្រើ៖
-1. ផ្ញើ Link
-2. ជ្រើសរើសទម្រង់
-3. រងចាំទាញយក
+📌 របៀបប្រើ:
+- ផ្ញើ Link
+- ជ្រើស format
+- រងចាំ download
 
-វាយ /ask ដើម្បីសួរជំនួយ`,
+💬 /ask សម្រាប់ support`,
 {
     reply_markup: {
         inline_keyboard: [[
-            { text: "បើក Tools", web_app: { url: "https://tools-amertak.vercel.app" } }
+            { text: "Tools", web_app: { url: "https://tools-amertak.vercel.app" } }
         ]]
     }
 });
@@ -231,27 +226,27 @@ bot.onText(/\/start/, async (msg) => {
 });
 
 // ========================
-// ASK
+// ASK (USER → OWNER)
 // ========================
 bot.onText(/\/ask (.+)/, async (msg, match) => {
 
     const question = match[1];
 
     await bot.sendMessage(msg.chat.id,
-        "អ្នកនឹងទទួលបានការឆ្លើយតប ពេល owner ឃើញ"
+        "⏳ អ្នកនឹងទទួលបានការឆ្លើយតប ពេល owner ឃើញ"
     );
 
     await bot.sendMessage(OWNER_ID,
-`សំណួរថ្មី
+`📩 New Ask
 
-ឈ្មោះ: ${msg.from.first_name}
-ID: ${msg.from.id}
+👤 Name: ${msg.from.first_name}
+🆔 ID: ${msg.from.id}
 
-សារ: ${question}`,
+💬 ${question}`,
 {
     reply_markup: {
         inline_keyboard: [[
-            { text: "ឆ្លើយតប", callback_data: `reply_${msg.from.id}` }
+            { text: "Reply", callback_data: `reply_${msg.from.id}` }
         ]]
     }
 });
@@ -259,7 +254,7 @@ ID: ${msg.from.id}
 });
 
 // ========================
-// CALLBACK QUERY
+// CALLBACK (FIX REPLY UX)
 // ========================
 bot.on("callback_query", async (query) => {
 
@@ -268,16 +263,21 @@ bot.on("callback_query", async (query) => {
 
     await bot.answerCallbackQuery(query.id);
 
+    // 🔥 FIX REPLY BUTTON
     if (action.startsWith("reply_")) {
         const id = action.split("_")[1];
-        return bot.sendMessage(chatId, `/reply ${id} `);
+
+        return bot.sendMessage(
+            chatId,
+            `➡️ Reply user ID: ${id}\nសរសេរ message ខាងក្រោម:\n\n/reply ${id} `
+        );
     }
 
     const data = userStates[chatId]?.data;
     if (!data) return;
 
     const media = findMedia(data, action);
-    if (!media) return bot.sendMessage(chatId, "រកមិនឃើញ");
+    if (!media) return bot.sendMessage(chatId, "រកមិនឃើញ media");
 
     return sendFile(chatId, media, data);
 });
@@ -303,29 +303,29 @@ bot.on("message", async (msg) => {
 
         if (data.thumbnail) {
             await bot.sendPhoto(chatId, data.thumbnail, {
-                caption: data.title || "វីដេអូ"
+                caption: data.title || "Media"
             });
         }
 
         const keyboard = [];
 
         if (findMedia(data, "video")) {
-            keyboard.push([{ text: "វីដេអូ", callback_data: "video" }]);
+            keyboard.push([{ text: "Video", callback_data: "video" }]);
         }
 
         if (findMedia(data, "image")) {
-            keyboard.push([{ text: "រូបភាព", callback_data: "image" }]);
+            keyboard.push([{ text: "Image", callback_data: "image" }]);
         }
 
         if (findMedia(data, "mp3")) {
-            keyboard.push([{ text: "សំឡេង", callback_data: "mp3" }]);
+            keyboard.push([{ text: "Audio", callback_data: "mp3" }]);
         }
 
         return bot.sendMessage(chatId,
-            "ជ្រើសរើសទម្រង់",
+            "Choose format",
             { reply_markup: { inline_keyboard: keyboard } }
         );
     }
 
-    return bot.sendMessage(chatId, "សូមផ្ញើ Link");
+    return bot.sendMessage(chatId, "Send valid link");
 });
