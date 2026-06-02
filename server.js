@@ -80,7 +80,7 @@ async function fetchVideo(chatId, url) {
 }
 
 // ========================
-// MEDIA FINDER
+// FIND MEDIA
 // ========================
 function findMedia(data, type) {
     if (!data?.medias) return null;
@@ -101,11 +101,19 @@ function findMedia(data, type) {
 }
 
 // ========================
-// ULTRA REAL PROGRESS ENGINE
+// REAL ULTRA PROGRESS BAR
+// ========================
+function renderBar(percent) {
+    const blocks = Math.round(percent / 10);
+    return "█".repeat(blocks) + "░".repeat(10 - blocks);
+}
+
+// ========================
+// SEND FILE (FIXED + REAL PROGRESS)
 // ========================
 async function sendFile(chatId, media, data) {
 
-    const msg = await bot.sendMessage(chatId, "Starting download... 0%");
+    const msg = await bot.sendMessage(chatId, "Downloading... 0%");
 
     try {
         const response = await axios.get(`${API_BASE}/api/proxy`, {
@@ -115,44 +123,31 @@ async function sendFile(chatId, media, data) {
 
         const total = parseInt(response.headers["content-length"] || "0");
         let downloaded = 0;
-        let lastEdit = 0;
-
+        let lastUpdate = 0;
         const chunks = [];
 
-        const renderBar = (p) => {
-            const blocks = Math.round(p / 10);
-            return "█".repeat(blocks) + "░".repeat(10 - blocks);
-        };
-
-        response.data.on("data", async (chunk) => {
+        response.data.on("data", (chunk) => {
             downloaded += chunk.length;
             chunks.push(chunk);
 
             const percent = total ? Math.floor((downloaded / total) * 100) : 0;
-
             const now = Date.now();
 
-            // ⚡ throttle updates (IMPORTANT for Telegram)
-            if (now - lastEdit < 800) return;
-            lastEdit = now;
+            // throttle fix (IMPORTANT)
+            if (now - lastUpdate < 700) return;
+            lastUpdate = now;
 
-            const bar = renderBar(percent);
-
-            try {
-                await bot.editMessageText(
-                    `Downloading...\n[${bar}] ${percent}%`,
-                    {
-                        chat_id: chatId,
-                        message_id: msg.message_id
-                    }
-                );
-            } catch (_) {}
+            bot.editMessageText(
+                `Downloading...\n[${renderBar(percent)}] ${percent}%`,
+                {
+                    chat_id: chatId,
+                    message_id: msg.message_id
+                }
+            ).catch(() => {});
         });
 
         response.data.on("end", async () => {
-
             const buffer = Buffer.concat(chunks);
-
             const caption = data.title || "File";
 
             try {
@@ -165,8 +160,8 @@ async function sendFile(chatId, media, data) {
                 } else {
                     await bot.sendDocument(chatId, buffer, { caption });
                 }
-            } catch (err) {
-                await bot.sendMessage(chatId, "Failed to send file");
+            } catch (e) {
+                await bot.sendMessage(chatId, "Send file failed");
             }
 
             await bot.deleteMessage(chatId, msg.message_id).catch(() => {});
@@ -196,9 +191,9 @@ bot.onText(/\/start/, async (msg) => {
 `Welcome ${name}
 
 How to use:
-1. Send link
-2. Choose format
-3. Wait download
+- Send link
+- Choose format
+- Wait download
 
 Use /ask for support`,
 {
@@ -247,7 +242,7 @@ ${question}`,
 });
 
 // ========================
-// CALLBACK HANDLER
+// CALLBACK HANDLER (FIXED + AUTO REPLY INSERT)
 // ========================
 bot.on("callback_query", async query => {
 
@@ -256,14 +251,17 @@ bot.on("callback_query", async query => {
 
     await bot.answerCallbackQuery(query.id);
 
-    // OWNER REPLY AUTO
+    // ========================
+    // FIX: AUTO REPLY INSERT
+    // ========================
     if (action.startsWith("reply_")) {
-
         const id = action.split("_")[1];
 
+        // IMPORTANT FIX:
+        // send ready-to-type command
         return bot.sendMessage(
             chatId,
-            `/reply ${id} `
+            `ចុច copy ឬ send បន្ទាប់:\n\n/reply ${id} `
         );
     }
 
@@ -271,13 +269,13 @@ bot.on("callback_query", async query => {
     if (!data) return;
 
     const media = findMedia(data, action);
-    if (!media) return;
+    if (!media) return bot.sendMessage(chatId, "រកមិនឃើញ media");
 
     return sendFile(chatId, media, data);
 });
 
 // ========================
-// MAIN MESSAGE
+// MAIN MESSAGE HANDLER
 // ========================
 bot.on("message", async (msg) => {
 
