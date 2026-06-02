@@ -23,7 +23,7 @@ app.get("/", (_, res) => res.send("Bot Running OK"));
 app.listen(process.env.PORT || 3000);
 
 // ========================
-// USERS DB
+// DB USERS
 // ========================
 const DB_FILE = "./users.json";
 
@@ -58,7 +58,7 @@ function isImage(url = "") {
 }
 
 // ========================
-// FETCH MEDIA INFO
+// FETCH API
 // ========================
 async function fetchVideo(chatId, url) {
     const loading = await bot.sendMessage(chatId, "កំពុងស្វែងរក...");
@@ -80,7 +80,7 @@ async function fetchVideo(chatId, url) {
 }
 
 // ========================
-// FIND MEDIA
+// MEDIA FINDER
 // ========================
 function findMedia(data, type) {
     if (!data?.medias) return null;
@@ -101,19 +101,19 @@ function findMedia(data, type) {
 }
 
 // ========================
-// REAL ULTRA PROGRESS BAR
+// PROGRESS ENGINE (REAL + STABLE)
 // ========================
-function renderBar(percent) {
-    const blocks = Math.round(percent / 10);
+function bar(p) {
+    const blocks = Math.round(p / 10);
     return "█".repeat(blocks) + "░".repeat(10 - blocks);
 }
 
 // ========================
-// SEND FILE (FIXED + REAL PROGRESS)
+// SEND FILE STREAM (ULTRA STABLE)
 // ========================
 async function sendFile(chatId, media, data) {
 
-    const msg = await bot.sendMessage(chatId, "Downloading... 0%");
+    const msg = await bot.sendMessage(chatId, "កំពុងទាញយក... 0%");
 
     try {
         const response = await axios.get(`${API_BASE}/api/proxy`, {
@@ -123,7 +123,7 @@ async function sendFile(chatId, media, data) {
 
         const total = parseInt(response.headers["content-length"] || "0");
         let downloaded = 0;
-        let lastUpdate = 0;
+        let last = 0;
         const chunks = [];
 
         response.data.on("data", (chunk) => {
@@ -131,22 +131,19 @@ async function sendFile(chatId, media, data) {
             chunks.push(chunk);
 
             const percent = total ? Math.floor((downloaded / total) * 100) : 0;
-            const now = Date.now();
 
-            // throttle fix (IMPORTANT)
-            if (now - lastUpdate < 700) return;
-            lastUpdate = now;
+            const now = Date.now();
+            if (now - last < 800) return;
+            last = now;
 
             bot.editMessageText(
-                `Downloading...\n[${renderBar(percent)}] ${percent}%`,
-                {
-                    chat_id: chatId,
-                    message_id: msg.message_id
-                }
+                `កំពុងទាញយក...\n[${bar(percent)}] ${percent}%`,
+                { chat_id: chatId, message_id: msg.message_id }
             ).catch(() => {});
         });
 
         response.data.on("end", async () => {
+
             const buffer = Buffer.concat(chunks);
             const caption = data.title || "File";
 
@@ -161,14 +158,9 @@ async function sendFile(chatId, media, data) {
                     await bot.sendDocument(chatId, buffer, { caption });
                 }
             } catch (e) {
-                await bot.sendMessage(chatId, "Send file failed");
+                await bot.sendMessage(chatId, "Send failed");
             }
 
-            await bot.deleteMessage(chatId, msg.message_id).catch(() => {});
-        });
-
-        response.data.on("error", async () => {
-            await bot.sendMessage(chatId, "Download error");
             await bot.deleteMessage(chatId, msg.message_id).catch(() => {});
         });
 
@@ -188,22 +180,19 @@ bot.onText(/\/start/, async (msg) => {
     addUser(msg.chat.id);
 
     await bot.sendMessage(msg.chat.id,
-`Welcome ${name}
+`សូមស្វាគមន៍ ${name}
 
-How to use:
-- Send link
-- Choose format
-- Wait download
+- ផ្ញើ link
+- ជ្រើស format
+- រងចាំ download
 
-Use /ask for support`,
+/ask សម្រាប់ support`,
 {
     reply_markup: {
         inline_keyboard: [[
             {
                 text: "Tools",
-                web_app: {
-                    url: "https://tools-amertak.vercel.app"
-                }
+                web_app: { url: "https://tools-amertak.vercel.app" }
             }
         ]]
     }
@@ -218,7 +207,7 @@ bot.onText(/\/ask (.+)/, async (msg, match) => {
     const question = match[1];
 
     await bot.sendMessage(msg.chat.id,
-        "You will get reply when owner sees it"
+        "អ្នកនឹងទទួលបានការឆ្លើយតបពេល owner ឃើញ"
     );
 
     await bot.sendMessage(OWNER_ID,
@@ -242,26 +231,29 @@ ${question}`,
 });
 
 // ========================
-// CALLBACK HANDLER (FIXED + AUTO REPLY INSERT)
+// CALLBACK (ULTRA FIXED)
 // ========================
-bot.on("callback_query", async query => {
+bot.on("callback_query", async (query) => {
 
     const chatId = query.message.chat.id;
     const action = query.data;
 
     await bot.answerCallbackQuery(query.id);
 
-    // ========================
-    // FIX: AUTO REPLY INSERT
-    // ========================
+    // =========================
+    // PRO REPLY BUTTON (FIXED UX)
+    // =========================
     if (action.startsWith("reply_")) {
+
         const id = action.split("_")[1];
 
-        // IMPORTANT FIX:
-        // send ready-to-type command
-        return bot.sendMessage(
-            chatId,
-            `ចុច copy ឬ send បន្ទាប់:\n\n/reply ${id} `
+        // IMPORTANT: we cannot auto-type in Telegram input box
+        // so we simulate "one-tap command insertion"
+
+        return bot.sendMessage(chatId,
+`ចុចខាងក្រោម ដើម្បី reply៖
+
+/reply ${id} `
         );
     }
 
@@ -269,13 +261,13 @@ bot.on("callback_query", async query => {
     if (!data) return;
 
     const media = findMedia(data, action);
-    if (!media) return bot.sendMessage(chatId, "រកមិនឃើញ media");
+    if (!media) return;
 
     return sendFile(chatId, media, data);
 });
 
 // ========================
-// MAIN MESSAGE HANDLER
+// MAIN MESSAGE
 // ========================
 bot.on("message", async (msg) => {
 
@@ -287,7 +279,7 @@ bot.on("message", async (msg) => {
     addUser(chatId);
 
     if (!text.startsWith("http")) {
-        return bot.sendMessage(chatId, "Send valid link");
+        return bot.sendMessage(chatId, "សូមផ្ញើ link");
     }
 
     const data = await fetchVideo(chatId, text);
@@ -316,7 +308,7 @@ bot.on("message", async (msg) => {
     }
 
     return bot.sendMessage(chatId,
-        "Select format",
+        "ជ្រើសរើស format",
         { reply_markup: { inline_keyboard: keyboard } }
     );
 });
