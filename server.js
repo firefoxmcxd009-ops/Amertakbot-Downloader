@@ -23,7 +23,7 @@ app.get("/", (_, res) => res.send("Bot Running OK"));
 app.listen(process.env.PORT || 3000);
 
 // ========================
-// DATABASE (users.json)
+// USERS DB
 // ========================
 const DB_FILE = "./users.json";
 
@@ -94,23 +94,18 @@ function findMedia(data, type) {
     }
 
     if (type === "image") {
-        return data.medias.find(
-            m => m.type === "image" || isImage(m.url)
-        );
+        return data.medias.find(m => m.type === "image" || isImage(m.url));
     }
 
     return null;
 }
 
 // ========================
-// REAL PROGRESS DOWNLOADER
+// ULTRA REAL PROGRESS ENGINE
 // ========================
 async function sendFile(chatId, media, data) {
 
-    const msg = await bot.sendMessage(
-        chatId,
-        "កំពុងទាញយក...\n0%"
-    );
+    const msg = await bot.sendMessage(chatId, "Starting download... 0%");
 
     try {
         const response = await axios.get(`${API_BASE}/api/proxy`, {
@@ -120,93 +115,92 @@ async function sendFile(chatId, media, data) {
 
         const total = parseInt(response.headers["content-length"] || "0");
         let downloaded = 0;
+        let lastEdit = 0;
+
         const chunks = [];
 
-        response.data.on("data", chunk => {
+        const renderBar = (p) => {
+            const blocks = Math.round(p / 10);
+            return "█".repeat(blocks) + "░".repeat(10 - blocks);
+        };
+
+        response.data.on("data", async (chunk) => {
             downloaded += chunk.length;
             chunks.push(chunk);
 
-            const percent = total
-                ? Math.floor((downloaded / total) * 100)
-                : 0;
+            const percent = total ? Math.floor((downloaded / total) * 100) : 0;
 
-            const bar =
-                percent < 20 ? "■□□□□" :
-                percent < 40 ? "■■□□□" :
-                percent < 60 ? "■■■□□" :
-                percent < 80 ? "■■■■□" :
-                               "■■■■■";
+            const now = Date.now();
 
-            bot.editMessageText(
-                `កំពុងទាញយក...\n${bar} ${percent}%`,
-                {
-                    chat_id: chatId,
-                    message_id: msg.message_id
-                }
-            ).catch(() => {});
+            // ⚡ throttle updates (IMPORTANT for Telegram)
+            if (now - lastEdit < 800) return;
+            lastEdit = now;
+
+            const bar = renderBar(percent);
+
+            try {
+                await bot.editMessageText(
+                    `Downloading...\n[${bar}] ${percent}%`,
+                    {
+                        chat_id: chatId,
+                        message_id: msg.message_id
+                    }
+                );
+            } catch (_) {}
         });
 
         response.data.on("end", async () => {
 
             const buffer = Buffer.concat(chunks);
 
-            if (media.type === "audio") {
-                await bot.sendAudio(chatId, buffer, {
-                    caption: data.title || "Audio"
-                });
-            }
+            const caption = data.title || "File";
 
-            else if (media.type === "video") {
-                await bot.sendVideo(chatId, buffer, {
-                    caption: data.title || "Video"
-                });
-            }
-
-            else if (media.type === "image" || isImage(media.url)) {
-                await bot.sendPhoto(chatId, buffer, {
-                    caption: data.title || "Image"
-                });
-            }
-
-            else {
-                await bot.sendDocument(chatId, buffer, {
-                    caption: data.title || "File"
-                });
+            try {
+                if (media.type === "audio") {
+                    await bot.sendAudio(chatId, buffer, { caption });
+                } else if (media.type === "video") {
+                    await bot.sendVideo(chatId, buffer, { caption });
+                } else if (media.type === "image" || isImage(media.url)) {
+                    await bot.sendPhoto(chatId, buffer, { caption });
+                } else {
+                    await bot.sendDocument(chatId, buffer, { caption });
+                }
+            } catch (err) {
+                await bot.sendMessage(chatId, "Failed to send file");
             }
 
             await bot.deleteMessage(chatId, msg.message_id).catch(() => {});
         });
 
         response.data.on("error", async () => {
-            await bot.sendMessage(chatId, "Download បរាជ័យ");
+            await bot.sendMessage(chatId, "Download error");
+            await bot.deleteMessage(chatId, msg.message_id).catch(() => {});
         });
 
     } catch (err) {
-        await bot.sendMessage(chatId, "Server Error");
+        await bot.sendMessage(chatId, "Server error");
     }
 }
 
 // ========================
 // START
 // ========================
-bot.onText(/\/start/, async msg => {
+bot.onText(/\/start/, async (msg) => {
 
     const name =
-        (msg.from.first_name || "") +
-        " " +
-        (msg.from.last_name || "");
+        (msg.from.first_name || "") + " " + (msg.from.last_name || "");
 
     addUser(msg.chat.id);
 
     await bot.sendMessage(msg.chat.id,
-`សូមស្វាគមន៍ ${name}
+`Welcome ${name}
 
-📌 របៀបប្រើ:
-- ផ្ញើ link
-- ជ្រើស format
-- រងចាំ download
+How to use:
+1. Send link
+2. Choose format
+3. Wait download
 
-💬 /ask សម្រាប់ support`,
+Use /ask for support`,
 {
     reply_markup: {
         inline_keyboard: [[
@@ -219,7 +213,6 @@ bot.onText(/\/start/, async msg => {
         ]]
     }
 });
-
 });
 
 // ========================
@@ -229,13 +222,12 @@ bot.onText(/\/ask (.+)/, async (msg, match) => {
 
     const question = match[1];
 
-    await bot.sendMessage(
-        msg.chat.id,
-        "⏳ អ្នកនឹងទទួលបានការឆ្លើយតប ពេល owner ឃើញ"
+    await bot.sendMessage(msg.chat.id,
+        "You will get reply when owner sees it"
     );
 
     await bot.sendMessage(OWNER_ID,
-`📩 New Ask
+`NEW ASK
 
 Name: ${msg.from.first_name}
 ID: ${msg.from.id}
@@ -252,7 +244,6 @@ ${question}`,
         ]]
     }
 });
-
 });
 
 // ========================
@@ -265,14 +256,14 @@ bot.on("callback_query", async query => {
 
     await bot.answerCallbackQuery(query.id);
 
-    // 🔥 OWNER REPLY BUTTON
+    // OWNER REPLY AUTO
     if (action.startsWith("reply_")) {
 
         const id = action.split("_")[1];
 
         return bot.sendMessage(
             chatId,
-            `👉 Reply to user ID: ${id}\n\nType:\n/reply ${id} `
+            `/reply ${id} `
         );
     }
 
@@ -280,15 +271,15 @@ bot.on("callback_query", async query => {
     if (!data) return;
 
     const media = findMedia(data, action);
-    if (!media) return bot.sendMessage(chatId, "រកមិនឃើញ media");
+    if (!media) return;
 
     return sendFile(chatId, media, data);
 });
 
 // ========================
-// MAIN MESSAGE HANDLER
+// MAIN MESSAGE
 // ========================
-bot.on("message", async msg => {
+bot.on("message", async (msg) => {
 
     const chatId = msg.chat.id;
     const text = msg.text;
@@ -298,7 +289,7 @@ bot.on("message", async msg => {
     addUser(chatId);
 
     if (!text.startsWith("http")) {
-        return bot.sendMessage(chatId, "សូមផ្ញើ Link");
+        return bot.sendMessage(chatId, "Send valid link");
     }
 
     const data = await fetchVideo(chatId, text);
@@ -327,7 +318,7 @@ bot.on("message", async msg => {
     }
 
     return bot.sendMessage(chatId,
-        "ជ្រើសរើស format",
+        "Select format",
         { reply_markup: { inline_keyboard: keyboard } }
     );
 });
