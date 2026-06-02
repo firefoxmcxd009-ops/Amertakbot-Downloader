@@ -8,7 +8,6 @@ const axios = require("axios");
 // ========================
 // CONFIG
 // ========================
-
 const TOKEN = process.env.BOT_TOKEN;
 const OWNER_ID = process.env.OWNER_ID;
 
@@ -16,36 +15,24 @@ const API_BASE = process.env.API_BASE;
 const API_KEY = process.env.API_KEY || "amertak_super_key_2026";
 
 // ========================
-// BOT INIT
+// BOT
 // ========================
-
-const bot = new TelegramBot(TOKEN, {
-    polling: true
-});
+const bot = new TelegramBot(TOKEN, { polling: true });
 
 // ========================
 // EXPRESS
 // ========================
-
 const app = express();
-
-app.get("/", (_, res) => {
-    res.send("Bot Running");
-});
-
+app.get("/", (_, res) => res.send("Bot កំពុងដំណើរការ"));
 app.listen(process.env.PORT || 3000);
 
 // ========================
 // USERS DB
 // ========================
-
 const DB_FILE = "./users.json";
 
 function loadUsers() {
-    if (!fs.existsSync(DB_FILE)) {
-        fs.writeFileSync(DB_FILE, "[]");
-    }
-
+    if (!fs.existsSync(DB_FILE)) fs.writeFileSync(DB_FILE, "[]");
     return new Set(JSON.parse(fs.readFileSync(DB_FILE)));
 }
 
@@ -65,14 +52,11 @@ function addUser(id) {
 // ========================
 // STATES
 // ========================
-
 const userStates = {};
-const askStates = {};
 
 // ========================
 // HELPERS
 // ========================
-
 function isImage(url = "") {
     return (
         url.includes(".jpg") ||
@@ -82,72 +66,116 @@ function isImage(url = "") {
     );
 }
 
-function formatQuality(q) {
-    if (!q) return "Unknown";
-
-    return q
-        .split("_")
-        .map(w => w.charAt(0).toUpperCase() + w.slice(1))
-        .join(" ");
-}
-
 // ========================
-// PROGRESS BAR
+// REAL PROGRESS DOWNLOAD
 // ========================
+async function sendFile(chatId, media, data) {
 
-async function progressBar(chatId, msgId) {
+    const msg = await bot.sendMessage(
+        chatId,
+        "កំពុងទាញយកឯកសារ...\n0%"
+    );
 
-    const steps = [
-        "⬜⬜⬜⬜⬜ 0%",
-        "🟩⬜⬜⬜⬜ 20%",
-        "🟩🟩⬜⬜⬜ 40%",
-        "🟩🟩🟩⬜⬜ 60%",
-        "🟩🟩🟩🟩⬜ 80%",
-        "🟩🟩🟩🟩🟩 100%"
-    ];
-
-    for (let i = 0; i < steps.length; i++) {
-
-        await new Promise(r => setTimeout(r, 350));
-
-        await bot.editMessageText(
-            `📥 កំពុងទាញយក...\n\n${steps[i]}`,
+    try {
+        const response = await axios.get(
+            `${API_BASE}/api/proxy`,
             {
-                chat_id: chatId,
-                message_id: msgId
+                responseType: "stream",
+                params: { url: media.url }
             }
-        ).catch(() => {});
+        );
+
+        const total = parseInt(response.headers["content-length"] || "0");
+        let downloaded = 0;
+        const chunks = [];
+
+        response.data.on("data", (chunk) => {
+            downloaded += chunk.length;
+            chunks.push(chunk);
+
+            let percent = total
+                ? Math.floor((downloaded / total) * 100)
+                : 0;
+
+            if (percent > 100) percent = 100;
+
+            let bar =
+                percent < 20 ? "■□□□□" :
+                percent < 40 ? "■■□□□" :
+                percent < 60 ? "■■■□□" :
+                percent < 80 ? "■■■■□" :
+                               "■■■■■";
+
+            bot.editMessageText(
+                `កំពុងទាញយកឯកសារ...\n${bar} ${percent}%`,
+                {
+                    chat_id: chatId,
+                    message_id: msg.message_id
+                }
+            ).catch(() => {});
+        });
+
+        response.data.on("end", async () => {
+
+            const buffer = Buffer.concat(chunks);
+
+            if (media.type === "audio") {
+                await bot.sendAudio(chatId, buffer, {
+                    caption: data.title || "សំឡេង"
+                });
+            }
+
+            else if (media.type === "video") {
+                await bot.sendVideo(chatId, buffer, {
+                    caption: data.title || "វីដេអូ"
+                });
+            }
+
+            else if (media.type === "image" || isImage(media.url)) {
+                await bot.sendPhoto(chatId, buffer, {
+                    caption: data.title || "រូបភាព"
+                });
+            }
+
+            else {
+                await bot.sendDocument(chatId, buffer, {
+                    caption: data.title || "ឯកសារ"
+                });
+            }
+
+            await bot.deleteMessage(chatId, msg.message_id).catch(() => {});
+        });
+
+        response.data.on("error", async () => {
+            await bot.sendMessage(chatId, "បរាជ័យក្នុងការទាញយក");
+            await bot.deleteMessage(chatId, msg.message_id).catch(() => {});
+        });
+
+    } catch (err) {
+        await bot.sendMessage(chatId, "មានបញ្ហាក្នុងការទាញយក");
+        await bot.deleteMessage(chatId, msg.message_id).catch(() => {});
     }
 }
 
 // ========================
 // FETCH VIDEO
 // ========================
-
 async function fetchVideo(chatId, url) {
 
-    const loading = await bot.sendMessage(chatId, "⏳ Processing...");
+    const loading = await bot.sendMessage(chatId, "កំពុងស្វែងរក...");
 
     try {
-
         const res = await axios.get(`${API_BASE}/api/download`, {
             params: { url },
-            headers: {
-                "x-api-key": API_KEY
-            }
+            headers: { "x-api-key": API_KEY }
         });
 
         await bot.deleteMessage(chatId, loading.message_id).catch(() => {});
         return res.data;
 
     } catch (err) {
-
         await bot.deleteMessage(chatId, loading.message_id).catch(() => {});
-
-        await bot.sendMessage(chatId,
-            `❌ API Error\n\n${err.message}`
-        );
-
+        await bot.sendMessage(chatId, "API មានបញ្ហា");
         return null;
     }
 }
@@ -155,127 +183,47 @@ async function fetchVideo(chatId, url) {
 // ========================
 // FIND MEDIA
 // ========================
-
 function findMedia(data, type) {
-
     if (!data?.medias) return null;
 
     if (type === "video") {
-        return data.medias.find(m =>
-            m.type?.toLowerCase() === "video"
-        );
+        return data.medias.find(m => m.type === "video");
     }
 
     if (type === "mp3") {
-        return data.medias.find(m =>
-            m.type?.toLowerCase() === "audio"
-        );
+        return data.medias.find(m => m.type === "audio");
     }
 
     if (type === "image") {
-        return data.medias.find(m =>
-            m.type?.toLowerCase() === "image" ||
-            isImage(m.url)
-        );
+        return data.medias.find(m => m.type === "image" || isImage(m.url));
     }
 
     return null;
 }
 
 // ========================
-// SEND FILE
+// START
 // ========================
-
-async function sendFile(chatId, media, data) {
-
-    const msg = await bot.sendMessage(chatId,
-        "📥 Starting...\n⬜⬜⬜⬜⬜ 0%"
-    );
-
-    await progressBar(chatId, msg.message_id);
-
-    try {
-
-        const stream = await axios.get(`${API_BASE}/api/proxy`, {
-            responseType: "stream",
-            params: {
-                url: media.url
-            }
-        });
-
-        const caption = `📌 ${data.title || "Amertak"}`;
-
-        if (media.type?.toLowerCase() === "audio") {
-
-            await bot.sendAudio(chatId, stream.data, {
-                caption,
-                title: data.title || "Audio",
-                performer: data.author || "Amertak",
-                filename: `${data.title || "audio"}.mp3`
-            });
-
-        } else if (media.type?.toLowerCase() === "video") {
-
-            await bot.sendVideo(chatId, stream.data, {
-                caption
-            });
-
-        } else if (media.type?.toLowerCase() === "image" || isImage(media.url)) {
-
-            await bot.sendPhoto(chatId, stream.data, {
-                caption
-            });
-
-        } else {
-
-            await bot.sendDocument(chatId, stream.data, {
-                caption
-            });
-
-        }
-
-    } catch (err) {
-
-        await bot.sendMessage(chatId,
-            "❌ Download failed"
-        );
-
-    }
-
-    await bot.deleteMessage(chatId, msg.message_id).catch(() => {});
-}
-
-// ========================
-// /START
-// ========================
-
 bot.onText(/\/start/, async (msg) => {
 
     const fullName =
-        `${msg.from.first_name || ""} ${msg.from.last_name || ""}`.trim();
+        (msg.from.first_name || "") + " " + (msg.from.last_name || "");
 
     addUser(msg.chat.id);
 
     await bot.sendMessage(msg.chat.id,
-`👋 សូមស្វាគមន៍ ${fullName}
+`សូមស្វាគមន៍ ${fullName}
 
-📥 Amertak Downloader
+របៀបប្រើ៖
+1. ផ្ញើ Link
+2. ជ្រើសរើសទម្រង់
+3. រងចាំទាញយក
 
-📖 របៀបប្រើ:
-1️⃣ ផ្ញើ URL
-2️⃣ ជ្រើស format
-3️⃣ Download
-
-💬 /ask សម្រាប់ support`,
+វាយ /ask ដើម្បីសួរជំនួយ`,
 {
     reply_markup: {
         inline_keyboard: [[
-            {
-                text: "Tools",
-                web_app: {
-                    url: "https://tools-amertak.vercel.app"
-                }
-            }
+            { text: "បើក Tools", web_app: { url: "https://tools-amertak.vercel.app" } }
         ]]
     }
 });
@@ -283,110 +231,60 @@ bot.onText(/\/start/, async (msg) => {
 });
 
 // ========================
-// /ID
+// ASK
 // ========================
-
-bot.onText(/\/id/, async (msg) => {
-
-    await bot.sendMessage(msg.chat.id,
-`🆔 INFO
-
-User: ${msg.from.id}
-Chat: ${msg.chat.id}
-Username: @${msg.from.username || "none"}`
-    );
-
-});
-
-// ========================
-// /ASK
-// ========================
-
 bot.onText(/\/ask (.+)/, async (msg, match) => {
 
     const question = match[1];
 
-    addUser(msg.chat.id);
-
     await bot.sendMessage(msg.chat.id,
-        "⏳អ្នកនឹងទទួលបានការឆ្លើយតបនៅពេល owner បានឃើញ!"
+        "អ្នកនឹងទទួលបានការឆ្លើយតប ពេល owner ឃើញ"
     );
 
     await bot.sendMessage(OWNER_ID,
-`📩 NEW ASK
+`សំណួរថ្មី
 
-👤 ${msg.from.first_name}
-🆔 ${msg.from.id}
+ឈ្មោះ: ${msg.from.first_name}
+ID: ${msg.from.id}
 
-💬 ${question}
-
-Reply:
-/reply ${msg.from.id} message`
-    );
+សារ: ${question}`,
+{
+    reply_markup: {
+        inline_keyboard: [[
+            { text: "ឆ្លើយតប", callback_data: `reply_${msg.from.id}` }
+        ]]
+    }
+});
 
 });
 
 // ========================
-// /REPLY
+// CALLBACK QUERY
 // ========================
+bot.on("callback_query", async (query) => {
 
-bot.onText(/\/reply (\d+) (.+)/, async (msg, match) => {
+    const chatId = query.message.chat.id;
+    const action = query.data;
 
-    if (String(msg.chat.id) !== String(OWNER_ID)) {
-        return bot.sendMessage(msg.chat.id, "❌ Not allowed");
+    await bot.answerCallbackQuery(query.id);
+
+    if (action.startsWith("reply_")) {
+        const id = action.split("_")[1];
+        return bot.sendMessage(chatId, `/reply ${id} `);
     }
 
-    const userId = match[1];
-    const text = match[2];
+    const data = userStates[chatId]?.data;
+    if (!data) return;
 
-    await bot.sendMessage(userId,
-`📩 Reply From Owner
+    const media = findMedia(data, action);
+    if (!media) return bot.sendMessage(chatId, "រកមិនឃើញ");
 
-━━━━━━━━━━━━━━━
-
-${text}`);
-
-    await bot.sendMessage(msg.chat.id, "✅ Sent");
-
-});
-
-// ========================
-// /NOTIFY
-// ========================
-
-bot.onText(/\/notify (.+)/, async (msg, match) => {
-
-    if (String(msg.chat.id) !== String(OWNER_ID)) {
-        return bot.sendMessage(msg.chat.id, "❌ Not allowed");
-    }
-
-    let sent = 0;
-    let failed = 0;
-
-    for (let id of users) {
-
-        try {
-
-            await bot.sendMessage(id, `📢 ${match[1]}`);
-            sent++;
-
-        } catch (e) {
-            failed++;
-        }
-    }
-
-    await bot.sendMessage(msg.chat.id,
-`✅ DONE
-Sent: ${sent}
-Failed: ${failed}`
-    );
-
+    return sendFile(chatId, media, data);
 });
 
 // ========================
 // MAIN MESSAGE
 // ========================
-
 bot.on("message", async (msg) => {
 
     const chatId = msg.chat.id;
@@ -404,66 +302,30 @@ bot.on("message", async (msg) => {
         userStates[chatId] = { data };
 
         if (data.thumbnail) {
-
             await bot.sendPhoto(chatId, data.thumbnail, {
-                caption: `📌 ${data.title || "Video"}`
+                caption: data.title || "វីដេអូ"
             });
-
         }
 
         const keyboard = [];
 
         if (findMedia(data, "video")) {
-            keyboard.push([{ text: "🎬 Video", callback_data: "video" }]);
+            keyboard.push([{ text: "វីដេអូ", callback_data: "video" }]);
         }
 
         if (findMedia(data, "image")) {
-            keyboard.push([{ text: "🖼 Image", callback_data: "image" }]);
+            keyboard.push([{ text: "រូបភាព", callback_data: "image" }]);
         }
 
         if (findMedia(data, "mp3")) {
-            keyboard.push([{ text: "🎵 MP3", callback_data: "mp3" }]);
+            keyboard.push([{ text: "សំឡេង", callback_data: "mp3" }]);
         }
 
-        keyboard.push([{
-            text: "🔵 Tools",
-            web_app: {
-                url: "https://tools-amertak.vercel.app"
-            }
-        }]);
-
         return bot.sendMessage(chatId,
-            "📂 Choose format",
-            {
-                reply_markup: {
-                    inline_keyboard: keyboard
-                }
-            }
+            "ជ្រើសរើសទម្រង់",
+            { reply_markup: { inline_keyboard: keyboard } }
         );
     }
 
-    bot.sendMessage(chatId,
-        "📎 Send valid URL"
-    );
-
-});
-
-// ========================
-// CALLBACK QUERY
-// ========================
-
-bot.on("callback_query", async (query) => {
-
-    const chatId = query.message.chat.id;
-    const data = userStates[chatId]?.data;
-
-    await bot.answerCallbackQuery(query.id);
-
-    if (!data) return bot.sendMessage(chatId, "❌ Session expired");
-
-    const media = findMedia(data, query.data);
-    if (!media) return bot.sendMessage(chatId, "❌ Not found");
-
-    sendFile(chatId, media, data);
-
+    return bot.sendMessage(chatId, "សូមផ្ញើ Link");
 });
