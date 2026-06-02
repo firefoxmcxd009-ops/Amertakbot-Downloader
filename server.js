@@ -1,7 +1,6 @@
 require("dotenv").config();
 
 const fs = require("fs");
-const path = require("path");
 const express = require("express");
 const axios = require("axios");
 const TelegramBot = require("node-telegram-bot-api");
@@ -12,21 +11,14 @@ const TelegramBot = require("node-telegram-bot-api");
 const TOKEN = process.env.BOT_TOKEN;
 const OWNER_ID = process.env.OWNER_ID;
 
-const API_BASE =
-    process.env.API_BASE;
-
+const API_BASE = process.env.API_BASE;
 const API_KEY =
     process.env.API_KEY ||
     "amertak_super_key_2026";
 
-const PORT =
-    process.env.PORT || 3000;
-
 // ========================
 // INIT
 // ========================
-const app = express();
-
 const bot = new TelegramBot(
     TOKEN,
     {
@@ -34,109 +26,98 @@ const bot = new TelegramBot(
     }
 );
 
-// ========================
-// EXPRESS
-// ========================
+const app = express();
+
 app.get("/", (_, res) => {
-    res.send("Amertak Downloader Running");
+    res.send("Bot Running OK");
 });
 
-app.listen(PORT, () => {
-    console.log("Server running on port", PORT);
-});
+app.listen(
+    process.env.PORT || 3000,
+    () => {
+        console.log("Server Started");
+    }
+);
 
 // ========================
-// DATABASE
+// USERS DATABASE
 // ========================
-const DB_FILE =
-    path.join(__dirname, "users.json");
+const DB_FILE = "./users.json";
 
 function loadUsers() {
 
-    try {
-
-        if (!fs.existsSync(DB_FILE)) {
-            fs.writeFileSync(DB_FILE, "[]");
-        }
-
-        return new Set(
-            JSON.parse(
-                fs.readFileSync(DB_FILE)
-            )
-        );
-
-    } catch {
-
-        return new Set();
-
+    if (!fs.existsSync(DB_FILE)) {
+        fs.writeFileSync(DB_FILE, "[]");
     }
 
+    return new Set(
+        JSON.parse(
+            fs.readFileSync(DB_FILE)
+        )
+    );
 }
 
 function saveUsers(set) {
 
-    try {
-
-        fs.writeFileSync(
-            DB_FILE,
-            JSON.stringify([...set])
-        );
-
-    } catch (err) {
-
-        console.log(err);
-
-    }
-
+    fs.writeFileSync(
+        DB_FILE,
+        JSON.stringify([...set], null, 2)
+    );
 }
 
 const users = loadUsers();
 
 function addUser(id) {
 
+    id = String(id);
+
     if (!users.has(id)) {
 
         users.add(id);
 
         saveUsers(users);
-
     }
-
 }
 
 // ========================
 // STATES
 // ========================
 const userStates = {};
+const replyStates = {};
 
 // ========================
 // HELPERS
 // ========================
-function isValidURL(url = "") {
-
-    try {
-
-        new URL(url);
-
-        return true;
-
-    } catch {
-
-        return false;
-
-    }
-
-}
-
 function isImage(url = "") {
 
-    return /\.(jpg|jpeg|png|webp)$/i.test(url);
+    return /\.(jpg|jpeg|png|webp|gif)/i.test(url);
+}
 
+function isValidURL(text = "") {
+
+    return (
+        text.startsWith("http://") ||
+        text.startsWith("https://")
+    );
+}
+
+function renderProgressBar(percent) {
+
+    const total = 10;
+
+    const filled =
+        Math.round(percent / 10);
+
+    return (
+        "█".repeat(filled) +
+        "░".repeat(total - filled)
+    );
 }
 
 function formatBytes(bytes = 0) {
 
-    if (!bytes) return "Unknown";
+    if (!bytes)
+        return "Unknown";
 
     const sizes = [
         "B",
@@ -156,29 +137,12 @@ function formatBytes(bytes = 0) {
         " " +
         sizes[i]
     );
-
-}
-
-function renderProgressBar(percent) {
-
-    const size = 10;
-
-    const done =
-        Math.round(
-            (percent / 100) * size
-        );
-
-    return (
-        "█".repeat(done) +
-        "░".repeat(size - done)
-    );
-
 }
 
 // ========================
-// FETCH MEDIA INFO
+// FETCH MEDIA
 // ========================
-async function fetchMediaInfo(
+async function fetchVideo(
     chatId,
     url
 ) {
@@ -186,21 +150,23 @@ async function fetchMediaInfo(
     const loading =
         await bot.sendMessage(
             chatId,
-            "🔎 កំពុងស្វែងរក..."
+            "កំពុងស្វែងរកព័ត៌មាន..."
         );
 
     try {
 
-        const res =
+        const response =
             await axios.get(
                 `${API_BASE}/api/download`,
                 {
-                    params: { url },
+                    params: {
+                        url
+                    },
                     headers: {
                         "x-api-key":
                             API_KEY
                     },
-                    timeout: 60000
+                    timeout: 120000
                 }
             );
 
@@ -209,26 +175,24 @@ async function fetchMediaInfo(
             loading.message_id
         ).catch(() => {});
 
-        return res.data;
+        return response.data;
 
     } catch (err) {
+
+        console.error(err?.response?.data || err.message);
 
         await bot.deleteMessage(
             chatId,
             loading.message_id
         ).catch(() => {});
 
-        console.log(err?.response?.data || err);
-
         await bot.sendMessage(
             chatId,
-            "❌ មិនអាចទាញព័ត៌មានបាន"
+            "មិនអាចទាញព័ត៌មានបាន"
         );
 
         return null;
-
     }
-
 }
 
 // ========================
@@ -242,6 +206,7 @@ function findMedia(
     if (!data?.medias)
         return null;
 
+    // VIDEO
     if (type === "video") {
 
         return data.medias.find(
@@ -249,9 +214,9 @@ function findMedia(
                 m.type?.toLowerCase() ===
                 "video"
         );
-
     }
 
+    // AUDIO
     if (type === "audio") {
 
         return data.medias.find(
@@ -259,26 +224,24 @@ function findMedia(
                 m.type?.toLowerCase() ===
                 "audio"
         );
-
     }
 
+    // IMAGE
     if (type === "image") {
 
         return data.medias.find(
             m =>
                 m.type?.toLowerCase() ===
-                    "image" ||
+                "image" ||
                 isImage(m.url)
         );
-
     }
 
     return null;
-
 }
 
 // ========================
-// REAL DOWNLOADER
+// REAL STREAM DOWNLOADER
 // ========================
 async function sendFile(
     chatId,
@@ -286,10 +249,13 @@ async function sendFile(
     data
 ) {
 
-    const progressMsg =
+    const progressMessage =
         await bot.sendMessage(
             chatId,
-            "📥 កំពុងចាប់ផ្ដើម..."
+
+`កំពុងទាញយក...
+
+[░░░░░░░░░░] 0%`
         );
 
     try {
@@ -308,187 +274,193 @@ async function sendFile(
 
         const total =
             parseInt(
-                response.headers[
-                    "content-length"
-                ] || "0"
+                response.headers["content-length"] || "0"
             );
 
         let downloaded = 0;
-        let lastEdit = 0;
+        let lastUpdate = 0;
 
         const chunks = [];
 
         response.data.on(
             "data",
-            async chunk => {
+            async (chunk) => {
 
-            downloaded += chunk.length;
+                downloaded += chunk.length;
 
-            chunks.push(chunk);
+                chunks.push(chunk);
 
-            const percent =
-                total
-                    ? Math.floor(
-                        (downloaded / total) * 100
-                    )
-                    : 0;
+                const percent =
+                    total
+                        ? Math.floor(
+                            (downloaded / total) * 100
+                        )
+                        : 0;
 
-            const now = Date.now();
+                const now = Date.now();
 
-            if (
-                now - lastEdit < 1000
-            ) return;
+                // throttle update
+                if (
+                    now - lastUpdate < 1000
+                ) return;
 
-            lastEdit = now;
+                lastUpdate = now;
 
-            const bar =
-                renderProgressBar(percent);
+                const bar =
+                    renderProgressBar(percent);
 
-            const current =
-                formatBytes(downloaded);
+                const downloadedSize =
+                    formatBytes(downloaded);
 
-            const full =
-                formatBytes(total);
+                const totalSize =
+                    formatBytes(total);
 
-            await bot.editMessageText(
+                try {
 
-`📥 កំពុងទាញយក...
+                    await bot.editMessageText(
+
+`កំពុងទាញយក...
 
 [${bar}] ${percent}%
 
-${current} / ${full}`,
+${downloadedSize} / ${totalSize}`,
 
-                {
-                    chat_id: chatId,
-                    message_id:
-                        progressMsg.message_id
-                }
+                        {
+                            chat_id: chatId,
+                            message_id:
+                                progressMessage.message_id
+                        }
+                    );
 
-            ).catch(() => {});
-
-        });
+                } catch (_) {}
+            }
+        );
 
         response.data.on(
             "end",
             async () => {
 
-            const buffer =
-                Buffer.concat(chunks);
+                const buffer =
+                    Buffer.concat(chunks);
 
-            const caption =
+                const caption =
+                    data.title ||
+                    "Downloaded";
 
-`${data.title || "Media"}
+                try {
 
-🌐 ${data.platform || "Unknown"}`;
+                    // AUDIO
+                    if (
+                        media.type?.toLowerCase() ===
+                        "audio"
+                    ) {
 
-            try {
+                        await bot.sendAudio(
+                            chatId,
+                            buffer,
+                            {
+                                caption,
+                                title:
+                                    data.title ||
+                                    "Audio",
+                                performer:
+                                    data.author ||
+                                    "Amertak"
+                            }
+                        );
+                    }
 
-                // AUDIO
-                if (
-                    media.type?.toLowerCase() ===
-                    "audio"
-                ) {
+                    // VIDEO
+                    else if (
+                        media.type?.toLowerCase() ===
+                        "video"
+                    ) {
 
-                    await bot.sendAudio(
-                        chatId,
-                        buffer,
-                        {
-                            caption,
-                            title:
-                                data.title ||
-                                "Audio"
-                        }
-                    );
+                        await bot.sendVideo(
+                            chatId,
+                            buffer,
+                            {
+                                caption,
+                                supports_streaming: true
+                            }
+                        );
+                    }
 
-                }
-
-                // VIDEO
-                else if (
-                    media.type?.toLowerCase() ===
-                    "video"
-                ) {
-
-                    await bot.sendVideo(
-                        chatId,
-                        buffer,
-                        {
-                            caption,
-                            supports_streaming: true
-                        }
-                    );
-
-                }
-
-                // IMAGE
-                else if (
-                    media.type?.toLowerCase() ===
+                    // IMAGE
+                    else if (
+                        media.type?.toLowerCase() ===
                         "image" ||
-                    isImage(media.url)
-                ) {
+                        isImage(media.url)
+                    ) {
 
-                    await bot.sendPhoto(
+                        await bot.sendPhoto(
+                            chatId,
+                            buffer,
+                            {
+                                caption
+                            }
+                        );
+                    }
+
+                    // FILE
+                    else {
+
+                        await bot.sendDocument(
+                            chatId,
+                            buffer,
+                            {
+                                caption
+                            }
+                        );
+                    }
+
+                } catch (err) {
+
+                    console.error(err);
+
+                    await bot.sendMessage(
                         chatId,
-                        buffer,
-                        {
-                            caption
-                        }
+                        "បរាជ័យក្នុងការផ្ញើឯកសារ"
                     );
-
                 }
 
-                // FILE
-                else {
-
-                    await bot.sendDocument(
-                        chatId,
-                        buffer,
-                        {
-                            caption
-                        }
-                    );
-
-                }
-
-            } catch (err) {
-
-                console.log(err);
-
-                await bot.sendMessage(
+                await bot.deleteMessage(
                     chatId,
-                    "❌ មិនអាចផ្ញើឯកសារ"
-                );
-
+                    progressMessage.message_id
+                ).catch(() => {});
             }
-
-            await bot.deleteMessage(
-                chatId,
-                progressMsg.message_id
-            ).catch(() => {});
-
-        });
+        );
 
         response.data.on(
             "error",
             async () => {
 
-            await bot.sendMessage(
-                chatId,
-                "❌ Download error"
-            );
+                await bot.sendMessage(
+                    chatId,
+                    "Download Error"
+                );
 
-        });
+                await bot.deleteMessage(
+                    chatId,
+                    progressMessage.message_id
+                ).catch(() => {});
+            }
+        );
 
     } catch (err) {
 
-        console.log(err);
+        console.error(err.message);
 
         await bot.sendMessage(
             chatId,
-            "❌ Server error"
+            "Server Error"
         );
 
+        await bot.deleteMessage(
+            chatId,
+            progressMessage.message_id
+        ).catch(() => {});
     }
-
 }
 
 // ========================
@@ -496,49 +468,70 @@ ${current} / ${full}`,
 // ========================
 bot.onText(
     /\/start/,
-    async msg => {
+    async (msg) => {
 
-    addUser(msg.chat.id);
+        const fullName =
 
-    const name =
+            `${msg.from.first_name || ""} ${msg.from.last_name || ""}`;
 
-`${msg.from.first_name || ""}
-${msg.from.last_name || ""}`;
+        addUser(msg.chat.id);
 
-    await bot.sendMessage(
+        await bot.sendMessage(
 
-        msg.chat.id,
+            msg.chat.id,
 
-`សូមស្វាគមន៍ ${name}
+`សូមស្វាគមន៍ ${fullName}
 
-📌 របៀបប្រើ
+របៀបប្រើ:
 
-1. ផ្ញើ link
-2. ជ្រើស format
-3. រងចាំ download
+1. ផ្ញើ Link
+2. ជ្រើសរើស Format
+3. រងចាំ Download
 
-💬 Support:
-/ask សាររបស់អ្នក`,
+បញ្ជា:
 
-{
-    reply_markup: {
-        inline_keyboard: [
-            [
-                {
-                    text: "Tools",
-                    web_app: {
-                        url:
-"https://tools-amertak.vercel.app"
-                    }
+/ask សារ
+/id
+/notify សារ (Owner Only)`,
+
+            {
+                reply_markup: {
+                    inline_keyboard: [
+                        [
+                            {
+                                text: "Tools",
+                                web_app: {
+                                    url:
+                                        "https://tools-amertak.vercel.app"
+                                }
+                            }
+                        ]
+                    ]
                 }
-            ]
-        ]
+            }
+        );
     }
-}
+);
 
-    );
+// ========================
+// ID
+// ========================
+bot.onText(
+    /\/id/,
+    async (msg) => {
 
-});
+        await bot.sendMessage(
+
+            msg.chat.id,
+
+`ព័ត៌មានរបស់អ្នក
+
+User ID: ${msg.from.id}
+Chat ID: ${msg.chat.id}
+Username: @${msg.from.username || "none"}`
+        );
+    }
+);
 
 // ========================
 // ASK SYSTEM
@@ -547,374 +540,448 @@ bot.onText(
     /\/ask (.+)/,
     async (msg, match) => {
 
-    const question =
-        match[1];
+        const question =
+            match[1];
 
-    await bot.sendMessage(
-        msg.chat.id,
-        "⏳ អ្នកនឹងទទួលបានការឆ្លើយតប ពេល owner ឃើញ"
-    );
+        await bot.sendMessage(
 
-    await bot.sendMessage(
+            msg.chat.id,
 
-        OWNER_ID,
+            "អ្នកនឹងទទួលបានការឆ្លើយតប ពេល Owner ឃើញ"
+        );
 
-`📩 NEW ASK
+        await bot.sendMessage(
 
-👤 Name:
-${msg.from.first_name || "Unknown"}
+            OWNER_ID,
 
-🆔 User ID:
+`សំណួរថ្មី
+
+Name:
+${msg.from.first_name}
+
+User ID:
 ${msg.from.id}
 
-📛 Username:
+Username:
 @${msg.from.username || "none"}
 
-💬 Message:
+Message:
 ${question}`,
 
-{
-    reply_markup: {
-        force_reply: true,
-        inline_keyboard: [[
             {
-                text: "Reply",
-                callback_data:
-                    `reply_${msg.from.id}`
+                reply_markup: {
+                    inline_keyboard: [
+                        [
+                            {
+                                text: "Reply",
+                                callback_data:
+                                    `reply_${msg.from.id}`
+                            }
+                        ]
+                    ]
+                }
             }
-        ]]
+        );
     }
-}
-
-    );
-
-});
+);
 
 // ========================
-// NOTIFY
+// MANUAL REPLY
+// ========================
+bot.onText(
+    /\/reply (\d+) (.+)/,
+    async (msg, match) => {
+
+        if (
+            String(msg.chat.id) !==
+            String(OWNER_ID)
+        ) {
+            return;
+        }
+
+        const userId =
+            match[1];
+
+        const text =
+            match[2];
+
+        try {
+
+            await bot.sendMessage(
+
+                userId,
+
+`Reply From Owner
+
+${text}`
+            );
+
+            await bot.sendMessage(
+                msg.chat.id,
+                "បានផ្ញើ Reply"
+            );
+
+        } catch {
+
+            await bot.sendMessage(
+                msg.chat.id,
+                "មិនអាចផ្ញើបាន"
+            );
+        }
+    }
+);
+
+// ========================
+// NOTIFY ALL
 // ========================
 bot.onText(
     /\/notify (.+)/,
     async (msg, match) => {
 
-    if (
-        String(msg.chat.id) !==
-        String(OWNER_ID)
-    ) {
+        // owner only
+        if (
+            String(msg.chat.id) !==
+            String(OWNER_ID)
+        ) {
 
-        return bot.sendMessage(
-            msg.chat.id,
-            "❌ មិនអនុញ្ញាត"
-        );
-
-    }
-
-    const text =
-        match[1];
-
-    let sent = 0;
-    let failed = 0;
-
-    for (const id of users) {
-
-        try {
-
-            await bot.sendMessage(
-                id,
-                `📢 ${text}`
+            return bot.sendMessage(
+                msg.chat.id,
+                "Not Allowed"
             );
-
-            sent++;
-
-        } catch {
-
-            failed++;
-
         }
 
-    }
+        const text =
+            match[1];
 
-    await bot.sendMessage(
-        msg.chat.id,
+        let success = 0;
+        let failed = 0;
 
-`✅ Broadcast Completed
+        for (const id of users) {
 
-📤 Sent:
-${sent}
+            try {
 
-❌ Failed:
+                await bot.sendMessage(
+                    id,
+                    `Broadcast
+
+${text}`
+                );
+
+                success++;
+
+            } catch (err) {
+
+                failed++;
+            }
+
+            // anti flood
+            await new Promise(
+                r => setTimeout(r, 50)
+            );
+        }
+
+        await bot.sendMessage(
+
+            msg.chat.id,
+
+`Broadcast Completed
+
+Success:
+${success}
+
+Failed:
 ${failed}`
-
-    );
-
-});
+        );
+    }
+);
 
 // ========================
-// CALLBACK
+// CALLBACK QUERY
 // ========================
 bot.on(
     "callback_query",
-    async query => {
+    async (query) => {
 
-    const chatId =
-        query.message.chat.id;
+        const chatId =
+            query.message.chat.id;
 
-    const action =
-        query.data;
+        const action =
+            query.data;
 
-    await bot.answerCallbackQuery(
-        query.id
-    );
+        await bot.answerCallbackQuery(
+            query.id
+        );
 
-    // REPLY SYSTEM
-    if (
-        action.startsWith("reply_")
-    ) {
+        // ========================
+        // REPLY MODE
+        // ========================
+        if (
+            action.startsWith("reply_")
+        ) {
 
-        return bot.sendMessage(
+            // owner only
+            if (
+                String(chatId) !==
+                String(OWNER_ID)
+            ) {
+                return;
+            }
+
+            const userId =
+                action.split("_")[1];
+
+            replyStates[chatId] =
+                userId;
+
+            return bot.sendMessage(
+
+                chatId,
+
+`Reply Mode Enabled
+
+User ID:
+${userId}
+
+ឥឡូវអ្នកអាចវាយសារ Reply បាន`
+            );
+        }
+
+        // ========================
+        // DOWNLOAD
+        // ========================
+        const data =
+            userStates[chatId]?.data;
+
+        if (!data) {
+
+            return bot.sendMessage(
+                chatId,
+                "Session Expired"
+            );
+        }
+
+        const media =
+            findMedia(
+                data,
+                action
+            );
+
+        if (!media) {
+
+            return bot.sendMessage(
+                chatId,
+                "រកមិនឃើញ Media"
+            );
+        }
+
+        return sendFile(
             chatId,
-            "✍️ Reply ទៅ message ខាងលើ"
+            media,
+            data
         );
-
     }
-
-    const data =
-        userStates[chatId]?.data;
-
-    if (!data) {
-
-        return bot.sendMessage(
-            chatId,
-            "❌ Session expired"
-        );
-
-    }
-
-    const media =
-        findMedia(
-            data,
-            action
-        );
-
-    if (!media) {
-
-        return bot.sendMessage(
-            chatId,
-            "❌ រកមិនឃើញ media"
-        );
-
-    }
-
-    return sendFile(
-        chatId,
-        media,
-        data
-    );
-
-});
-
-// ========================
-// AI AUTO REPLY ENGINE
-// ========================
-bot.on(
-    "message",
-    async msg => {
-
-    // OWNER ONLY
-    if (
-        String(msg.chat.id) !==
-        String(OWNER_ID)
-    ) return;
-
-    // MUST REPLY
-    if (!msg.reply_to_message)
-        return;
-
-    const repliedText =
-
-        msg.reply_to_message.text || "";
-
-    const match =
-        repliedText.match(
-            /User ID:\s*(\d+)/i
-        );
-
-    if (!match) return;
-
-    const userId =
-        match[1];
-
-    if (!msg.text) return;
-
-    try {
-
-        await bot.sendMessage(
-
-            userId,
-
-`📩 Reply From Owner
-
-━━━━━━━━━━━━━━━
-
-${msg.text}`
-
-        );
-
-        await bot.sendMessage(
-            OWNER_ID,
-            "✅ Reply sent"
-        );
-
-    } catch {
-
-        await bot.sendMessage(
-            OWNER_ID,
-            "❌ Failed to send"
-        );
-
-    }
-
-});
+);
 
 // ========================
 // MAIN MESSAGE
 // ========================
 bot.on(
     "message",
-    async msg => {
+    async (msg) => {
 
-    const chatId =
-        msg.chat.id;
+        const chatId =
+            msg.chat.id;
 
-    const text =
-        msg.text;
+        const text =
+            msg.text;
 
-    if (!text) return;
+        if (!text)
+            return;
 
-    if (
-        text.startsWith("/")
-    ) return;
+        addUser(chatId);
 
-    addUser(chatId);
+        // ========================
+        // SKIP COMMANDS
+        // ========================
+        if (
+            text.startsWith("/")
+        ) return;
 
-    // VALID URL
-    if (!isValidURL(text)) {
+        // ========================
+        // OWNER REPLY MODE
+        // ========================
+        if (
+            String(chatId) ===
+            String(OWNER_ID) &&
+            replyStates[chatId]
+        ) {
 
-        return bot.sendMessage(
-            chatId,
-            "❌ សូមផ្ញើ URL ត្រឹមត្រូវ"
-        );
+            const targetUser =
+                replyStates[chatId];
 
-    }
+            try {
 
-    // FETCH DATA
-    const data =
-        await fetchMediaInfo(
-            chatId,
-            text
-        );
+                await bot.sendMessage(
 
-    if (!data) return;
+                    targetUser,
 
-    userStates[chatId] = {
-        data
-    };
+`Reply From Owner
 
-    // THUMBNAIL
-    if (data.thumbnail) {
+${text}`
+                );
 
-        await bot.sendPhoto(
-            chatId,
-            data.thumbnail,
-            {
-                caption:
+                await bot.sendMessage(
+                    chatId,
+                    "បានផ្ញើ Reply"
+                );
+
+            } catch {
+
+                await bot.sendMessage(
+                    chatId,
+                    "មិនអាចផ្ញើបាន"
+                );
+            }
+
+            delete replyStates[chatId];
+
+            return;
+        }
+
+        // ========================
+        // INVALID URL
+        // ========================
+        if (
+            !isValidURL(text)
+        ) {
+
+            return bot.sendMessage(
+                chatId,
+                "សូមផ្ញើ Link ត្រឹមត្រូវ"
+            );
+        }
+
+        // ========================
+        // FETCH DATA
+        // ========================
+        const data =
+            await fetchVideo(
+                chatId,
+                text
+            );
+
+        if (!data)
+            return;
+
+        userStates[chatId] = {
+            data
+        };
+
+        // ========================
+        // THUMBNAIL
+        // ========================
+        if (
+            data.thumbnail
+        ) {
+
+            await bot.sendPhoto(
+                chatId,
+                data.thumbnail,
+                {
+                    caption:
 
 `${data.title || "Untitled"}
 
-👤 ${data.author || "Unknown"}
+${data.author || "Unknown"}
 
-🌐 ${data.platform || "Unknown"}`
+${data.platform || ""}`
+                }
+            );
+        }
+
+        // ========================
+        // BUTTONS
+        // ========================
+        const keyboard = [];
+
+        // VIDEO
+        if (
+            findMedia(data, "video")
+        ) {
+
+            keyboard.push([
+                {
+                    text: "Video",
+                    callback_data:
+                        "video"
+                }
+            ]);
+        }
+
+        // IMAGE
+        if (
+            findMedia(data, "image")
+        ) {
+
+            keyboard.push([
+                {
+                    text: "Image",
+                    callback_data:
+                        "image"
+                }
+            ]);
+        }
+
+        // AUDIO
+        if (
+            findMedia(data, "audio")
+        ) {
+
+            keyboard.push([
+                {
+                    text: "Audio",
+                    callback_data:
+                        "audio"
+                }
+            ]);
+        }
+
+        // TOOLS
+        keyboard.push([
+            {
+                text: "Tools",
+                web_app: {
+                    url:
+                        "https://tools-amertak.vercel.app"
+                }
+            }
+        ]);
+
+        return bot.sendMessage(
+
+            chatId,
+
+            "ជ្រើសរើស Format",
+
+            {
+                reply_markup: {
+                    inline_keyboard:
+                        keyboard
+                }
             }
         );
-
     }
+);
 
-    // BUTTONS
-    const keyboard = [];
+// ========================
+// ERROR HANDLER
+// ========================
+process.on(
+    "unhandledRejection",
+    console.error
+);
 
-    if (
-        findMedia(
-            data,
-            "video"
-        )
-    ) {
-
-        keyboard.push([
-            {
-                text: "Video",
-                callback_data:
-                    "video"
-            }
-        ]);
-
-    }
-
-    if (
-        findMedia(
-            data,
-            "image"
-        )
-    ) {
-
-        keyboard.push([
-            {
-                text: "Image",
-                callback_data:
-                    "image"
-            }
-        ]);
-
-    }
-
-    if (
-        findMedia(
-            data,
-            "audio"
-        )
-    ) {
-
-        keyboard.push([
-            {
-                text: "Audio",
-                callback_data:
-                    "audio"
-            }
-        ]);
-
-    }
-
-    keyboard.push([
-        {
-            text: "Tools",
-            web_app: {
-                url:
-"https://tools-amertak.vercel.app"
-            }
-        }
-    ]);
-
-    await bot.sendMessage(
-
-        chatId,
-        "📂 ជ្រើសរើស format",
-
-{
-    reply_markup: {
-        inline_keyboard:
-            keyboard
-    }
-}
-
-    );
-
-});
+process.on(
+    "uncaughtException",
+    console.error
+);
