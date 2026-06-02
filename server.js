@@ -9,29 +9,19 @@ const axios = require("axios");
 // CONFIG
 // ========================
 
-const TOKEN =
-    process.env.BOT_TOKEN;
+const TOKEN = process.env.BOT_TOKEN;
+const OWNER_ID = process.env.OWNER_ID;
 
-const OWNER_ID =
-    process.env.OWNER_ID;
-
-const API_BASE =
-    process.env.API_BASE;
-
-const API_KEY =
-    process.env.API_KEY ||
-    "amertak_super_key_2026";
+const API_BASE = process.env.API_BASE;
+const API_KEY = process.env.API_KEY || "amertak_super_key_2026";
 
 // ========================
-// BOT
+// BOT INIT
 // ========================
 
-const bot = new TelegramBot(
-    TOKEN,
-    {
-        polling: true
-    }
-);
+const bot = new TelegramBot(TOKEN, {
+    polling: true
+});
 
 // ========================
 // EXPRESS
@@ -40,63 +30,36 @@ const bot = new TelegramBot(
 const app = express();
 
 app.get("/", (_, res) => {
-
     res.send("Bot Running");
-
 });
 
-app.listen(
-    process.env.PORT || 3000
-);
+app.listen(process.env.PORT || 3000);
 
 // ========================
 // USERS DB
 // ========================
 
-const DB_FILE =
-    "./users.json";
+const DB_FILE = "./users.json";
 
 function loadUsers() {
-
     if (!fs.existsSync(DB_FILE)) {
-
-        fs.writeFileSync(
-            DB_FILE,
-            "[]"
-        );
-
+        fs.writeFileSync(DB_FILE, "[]");
     }
 
-    return new Set(
-        JSON.parse(
-            fs.readFileSync(DB_FILE)
-        )
-    );
-
+    return new Set(JSON.parse(fs.readFileSync(DB_FILE)));
 }
 
 function saveUsers(set) {
-
-    fs.writeFileSync(
-        DB_FILE,
-        JSON.stringify([...set])
-    );
-
+    fs.writeFileSync(DB_FILE, JSON.stringify([...set]));
 }
 
-const users =
-    loadUsers();
+const users = loadUsers();
 
 function addUser(id) {
-
     if (!users.has(id)) {
-
         users.add(id);
-
         saveUsers(users);
-
     }
-
 }
 
 // ========================
@@ -111,40 +74,28 @@ const askStates = {};
 // ========================
 
 function isImage(url = "") {
-
     return (
         url.includes(".jpg") ||
         url.includes(".jpeg") ||
         url.includes(".png") ||
         url.includes(".webp")
     );
-
 }
 
 function formatQuality(q) {
-
-    if (!q)
-        return "Unknown";
+    if (!q) return "Unknown";
 
     return q
         .split("_")
-        .map(
-            w =>
-                w[0].toUpperCase() +
-                w.slice(1)
-        )
+        .map(w => w.charAt(0).toUpperCase() + w.slice(1))
         .join(" ");
-
 }
 
 // ========================
 // PROGRESS BAR
 // ========================
 
-async function progressBar(
-    chatId,
-    msgId
-) {
+async function progressBar(chatId, msgId) {
 
     const steps = [
         "⬜⬜⬜⬜⬜ 0%",
@@ -157,9 +108,7 @@ async function progressBar(
 
     for (let i = 0; i < steps.length; i++) {
 
-        await new Promise(
-            r => setTimeout(r, 450)
-        );
+        await new Promise(r => setTimeout(r, 350));
 
         await bot.editMessageText(
             `📥 កំពុងទាញយក...\n\n${steps[i]}`,
@@ -168,295 +117,166 @@ async function progressBar(
                 message_id: msgId
             }
         ).catch(() => {});
-
     }
-
 }
 
 // ========================
 // FETCH VIDEO
 // ========================
 
-async function fetchVideo(
-    chatId,
-    url
-) {
+async function fetchVideo(chatId, url) {
 
-    const loading =
-        await bot.sendMessage(
-            chatId,
-            "⏳ កំពុងស្វែងរកតំណលីង..."
-        );
+    const loading = await bot.sendMessage(chatId, "⏳ Processing...");
 
     try {
 
-        const res =
-            await axios.get(
-                `${API_BASE}/api/download`,
-                {
-                    params: {
-                        url
-                    },
-                    headers: {
-                        "x-api-key":
-                            API_KEY
-                    }
-                }
-            );
+        const res = await axios.get(`${API_BASE}/api/download`, {
+            params: { url },
+            headers: {
+                "x-api-key": API_KEY
+            }
+        });
 
-        await bot.deleteMessage(
-            chatId,
-            loading.message_id
-        ).catch(() => {});
-
+        await bot.deleteMessage(chatId, loading.message_id).catch(() => {});
         return res.data;
 
     } catch (err) {
 
-        console.error(
-            err?.response?.data || err
-        );
+        await bot.deleteMessage(chatId, loading.message_id).catch(() => {});
 
-        await bot.deleteMessage(
-            chatId,
-            loading.message_id
-        ).catch(() => {});
-
-        await bot.sendMessage(
-            chatId,
-
-`❌ API Error
-
-${err?.response?.data?.message || err.message}`
-
+        await bot.sendMessage(chatId,
+            `❌ API Error\n\n${err.message}`
         );
 
         return null;
-
     }
-
 }
 
 // ========================
 // FIND MEDIA
 // ========================
 
-function findMedia(
-    data,
-    type
-) {
+function findMedia(data, type) {
 
-    if (!data?.medias)
-        return null;
+    if (!data?.medias) return null;
 
-    // VIDEO
     if (type === "video") {
-
-        return data.medias.find(
-            m =>
-                m.type?.toLowerCase() ===
-                "video"
+        return data.medias.find(m =>
+            m.type?.toLowerCase() === "video"
         );
-
     }
 
-    // AUDIO
     if (type === "mp3") {
-
-        return data.medias.find(
-            m =>
-                m.type?.toLowerCase() ===
-                "audio"
+        return data.medias.find(m =>
+            m.type?.toLowerCase() === "audio"
         );
-
     }
 
-    // IMAGE
     if (type === "image") {
-
-        return data.medias.find(
-            m =>
-                m.type?.toLowerCase() ===
-                    "image" ||
-                isImage(m.url)
+        return data.medias.find(m =>
+            m.type?.toLowerCase() === "image" ||
+            isImage(m.url)
         );
-
     }
 
     return null;
-
 }
 
 // ========================
 // SEND FILE
 // ========================
 
-async function sendFile(
-    chatId,
-    media,
-    data
-) {
+async function sendFile(chatId, media, data) {
 
-    const msg =
-        await bot.sendMessage(
-            chatId,
-            "📥 Starting...\n⬜⬜⬜⬜⬜ 0%"
-        );
-
-    await progressBar(
-        chatId,
-        msg.message_id
+    const msg = await bot.sendMessage(chatId,
+        "📥 Starting...\n⬜⬜⬜⬜⬜ 0%"
     );
+
+    await progressBar(chatId, msg.message_id);
 
     try {
 
-        const stream =
-            await axios.get(
-                `${API_BASE}/api/proxy`,
-                {
-                    responseType: "stream",
-                    params: {
-                        url: media.url
-                    }
-                }
-            );
+        const stream = await axios.get(`${API_BASE}/api/proxy`, {
+            responseType: "stream",
+            params: {
+                url: media.url
+            }
+        });
 
-        // AUDIO
-        if (
-            media.type?.toLowerCase() ===
-            "audio"
-        ) {
+        const caption = `📌 ${data.title || "Amertak"}`;
 
-            await bot.sendAudio(
-                chatId,
-                stream.data,
-                {
-                    caption:
-                        `🎵 ${data.title || "Amertak Audio"}`
-                }
-            );
+        if (media.type?.toLowerCase() === "audio") {
 
-        }
+            await bot.sendAudio(chatId, stream.data, {
+                caption,
+                title: data.title || "Audio",
+                performer: data.author || "Amertak",
+                filename: `${data.title || "audio"}.mp3`
+            });
 
-        // VIDEO
-        else if (
-            media.type?.toLowerCase() ===
-            "video"
-        ) {
+        } else if (media.type?.toLowerCase() === "video") {
 
-            await bot.sendVideo(
-                chatId,
-                stream.data,
-                {
-                    caption:
-                        `🎬 ${data.title || "Amertak Video"}`
-                }
-            );
+            await bot.sendVideo(chatId, stream.data, {
+                caption
+            });
 
-        }
+        } else if (media.type?.toLowerCase() === "image" || isImage(media.url)) {
 
-        // IMAGE
-        else if (
-            media.type?.toLowerCase() ===
-                "image" ||
-            isImage(media.url)
-        ) {
+            await bot.sendPhoto(chatId, stream.data, {
+                caption
+            });
 
-            await bot.sendPhoto(
-                chatId,
-                stream.data,
-                {
-                    caption:
-                        `🖼 ${data.title || "Amertak Image"}`
-                }
-            );
+        } else {
 
-        }
-
-        // FILE
-        else {
-
-            await bot.sendDocument(
-                chatId,
-                stream.data,
-                {
-                    caption:
-                        `📁 ${data.title || "Amertak File"}`
-                }
-            );
+            await bot.sendDocument(chatId, stream.data, {
+                caption
+            });
 
         }
 
     } catch (err) {
 
-        console.error(err);
-
-        await bot.sendMessage(
-            chatId,
-            "❌ Failed to send media"
+        await bot.sendMessage(chatId,
+            "❌ Download failed"
         );
 
     }
 
-    await bot.deleteMessage(
-        chatId,
-        msg.message_id
-    ).catch(() => {});
-
+    await bot.deleteMessage(chatId, msg.message_id).catch(() => {});
 }
 
 // ========================
 // /START
 // ========================
-const fullName = msg.from.first_name || "" + msg.from.last_name || "";
 
-bot.onText(
-    /\/start/,
-    async (msg) => {
+bot.onText(/\/start/, async (msg) => {
+
+    const fullName =
+        `${msg.from.first_name || ""} ${msg.from.last_name || ""}`.trim();
 
     addUser(msg.chat.id);
 
-    await bot.sendMessage(
-        msg.chat.id,
+    await bot.sendMessage(msg.chat.id,
+`👋 សូមស្វាគមន៍ ${fullName}
 
-`សូមស្វាគមន៍ ${fullName} មកកាន់ Amertak Downloader
-━━━━━━━━━━━━━━━
+📥 Amertak Downloader
 
-📖​របៀបប្រើៈ
+📖 របៀបប្រើ:
+1️⃣ ផ្ញើ URL
+2️⃣ ជ្រើស format
+3️⃣ Download
 
-1️⃣ ផ្ញើរលីងទៅកាន់ Bot
-
-2️⃣ ជ្រើសរើស formate:
-• វីដេអូ
-• រូបភាព
-• សំលេង/mp3
-
-3️⃣ រងចាំស្វែងរក url information
-
-4️⃣ Download completed ✅
-
-━━━━━━━━━━━━━━━
-
-💬 មានបញ្ហាអំពី Bot?
-វាយ:
-/ask សាររបស់អ្នក
-
-Example:
-/ask សួរស្តី! មិនអាចទាញយកវីដេអូបានទេ`
-
-,
+💬 /ask សម្រាប់ support`,
 {
     reply_markup: {
-        inline_keyboard: [
-            [
-                {
-                    text: "ប្រើច្រើនជាងនេះ",
-                    web_app: {
-                        url: "https://tools-amertak.vercel.app"
-                    }
+        inline_keyboard: [[
+            {
+                text: "Tools",
+                web_app: {
+                    url: "https://tools-amertak.vercel.app"
                 }
-            ]
-        ]
+            }
+        ]]
     }
 });
 
@@ -466,25 +286,14 @@ Example:
 // /ID
 // ========================
 
-bot.onText(
-    /\/id/,
-    async (msg) => {
+bot.onText(/\/id/, async (msg) => {
 
-    const chatId =
-        msg.chat.id;
+    await bot.sendMessage(msg.chat.id,
+`🆔 INFO
 
-    const userId =
-        msg.from.id;
-
-    await bot.sendMessage(
-        chatId,
-
-`🆔 ព័ត៌មាន Telegram របស់អ្នកៈ
-
-👤 User ID: ${userId}
-💬 Chat ID: ${chatId}
-📛 Username: @${msg.from.username || "មិនមាន Username"}`
-
+User: ${msg.from.id}
+Chat: ${msg.chat.id}
+Username: @${msg.from.username || "none"}`
     );
 
 });
@@ -493,54 +302,26 @@ bot.onText(
 // /ASK
 // ========================
 
-bot.onText(
-    /\/ask (.+)/,
-    async (msg, match) => {
+bot.onText(/\/ask (.+)/, async (msg, match) => {
 
-    const chatId =
-        msg.chat.id;
+    const question = match[1];
 
-    const user =
-        msg.from;
+    addUser(msg.chat.id);
 
-    const question =
-        match[1];
-
-    askStates[user.id] = {
-        chatId
-    };
-
-    // WAIT MESSAGE
-    await bot.sendMessage(
-        chatId,
+    await bot.sendMessage(msg.chat.id,
         "⏳អ្នកនឹងទទួលបានការឆ្លើយតបនៅពេល owner បានឃើញ!"
     );
 
-    // SEND TO OWNER
-    await bot.sendMessage(
-        OWNER_ID,
+    await bot.sendMessage(OWNER_ID,
+`📩 NEW ASK
 
-`📩 New Ask Message
+👤 ${msg.from.first_name}
+🆔 ${msg.from.id}
 
-👤 Name:
-${user.first_name || "Unknown"}
+💬 ${question}
 
-🆔 User ID:
-${user.id}
-
-📛 Username:
-@${user.username || "no_username"}
-
-━━━━━━━━━━━━━━━
-💬 Message:
-
-${question}
-━━━━━━━━━━━━━━━
-
-Reply Using:
-
-/reply ${user.id} message`
-
+Reply:
+/reply ${msg.from.id} message`
     );
 
 });
@@ -549,60 +330,23 @@ Reply Using:
 // /REPLY
 // ========================
 
-bot.onText(
-    /\/reply (\d+) (.+)/,
-    async (msg, match) => {
+bot.onText(/\/reply (\d+) (.+)/, async (msg, match) => {
 
-    const chatId =
-        msg.chat.id;
-
-    // OWNER ONLY
-    if (
-        String(chatId) !==
-        String(OWNER_ID)
-    ) {
-
-        return bot.sendMessage(
-            chatId,
-            "❌ Not allowed"
-        );
-
+    if (String(msg.chat.id) !== String(OWNER_ID)) {
+        return bot.sendMessage(msg.chat.id, "❌ Not allowed");
     }
 
-    const userId =
-        match[1];
+    const userId = match[1];
+    const text = match[2];
 
-    const replyText =
-        match[2];
-
-    try {
-
-        await bot.sendMessage(
-            userId,
-
-`📩 Reply From Owner (Amertak Network)[@Amertak_Network]
+    await bot.sendMessage(userId,
+`📩 Reply From Owner
 
 ━━━━━━━━━━━━━━━
 
-${replyText}`
+${text}`);
 
-        );
-
-        await bot.sendMessage(
-            chatId,
-            "✅ បានឆ្លើយតប"
-        );
-
-    } catch (err) {
-
-        console.error(err);
-
-        await bot.sendMessage(
-            chatId,
-            "❌ ការឆ្លើយតបមិនដំណើរការ"
-        );
-
-    }
+    await bot.sendMessage(msg.chat.id, "✅ Sent");
 
 });
 
@@ -610,26 +354,10 @@ ${replyText}`
 // /NOTIFY
 // ========================
 
-bot.onText(
-    /\/notify (.+)/,
-    async (msg, match) => {
+bot.onText(/\/notify (.+)/, async (msg, match) => {
 
-    const chatId =
-        msg.chat.id;
-
-    const text =
-        match[1];
-
-    if (
-        String(chatId) !==
-        String(OWNER_ID)
-    ) {
-
-        return bot.sendMessage(
-            chatId,
-            "❌ Not allowed"
-        );
-
+    if (String(msg.chat.id) !== String(OWNER_ID)) {
+        return bot.sendMessage(msg.chat.id, "❌ Not allowed");
     }
 
     let sent = 0;
@@ -639,33 +367,18 @@ bot.onText(
 
         try {
 
-            await bot.sendMessage(
-                id,
-                `📢 ${text}`
-            );
-
+            await bot.sendMessage(id, `📢 ${match[1]}`);
             sent++;
 
-            await new Promise(
-                r => setTimeout(r, 40)
-            );
-
         } catch (e) {
-
             failed++;
-
         }
-
     }
 
-    return bot.sendMessage(
-        chatId,
-
-`✅ សារជូនដំណឹងបានបញ្ជូន
-
-📤 Sent: ${sent}
-❌ Failed: ${failed}`
-
+    await bot.sendMessage(msg.chat.id,
+`✅ DONE
+Sent: ${sent}
+Failed: ${failed}`
     );
 
 });
@@ -674,144 +387,63 @@ bot.onText(
 // MAIN MESSAGE
 // ========================
 
-bot.on(
-    "message",
-    async (msg) => {
+bot.on("message", async (msg) => {
 
-    const chatId =
-        msg.chat.id;
+    const chatId = msg.chat.id;
+    const text = msg.text;
 
-    const text =
-        msg.text;
-
-    if (
-        !text ||
-        text.startsWith("/")
-    ) return;
+    if (!text || text.startsWith("/")) return;
 
     addUser(chatId);
 
-    // URL
-    if (
-        text.startsWith("http")
-    ) {
+    if (text.startsWith("http")) {
 
-        const data =
-            await fetchVideo(
-                chatId,
-                text
-            );
-
+        const data = await fetchVideo(chatId, text);
         if (!data) return;
 
-        userStates[chatId] = {
-            data
-        };
+        userStates[chatId] = { data };
 
-        // THUMBNAIL
         if (data.thumbnail) {
 
-            await bot.sendPhoto(
-                chatId,
-                data.thumbnail,
-                {
-                    caption:
-`📌 ${data.title || "Untitled"}
-
-👤 ${data.author || "Amertak"}
-
-🌐 ${data.platform || "Amertak"}`
-                }
-            );
+            await bot.sendPhoto(chatId, data.thumbnail, {
+                caption: `📌 ${data.title || "Video"}`
+            });
 
         }
 
-        // BUTTONS
         const keyboard = [];
 
-        const hasVideo =
-            findMedia(
-                data,
-                "video"
-            );
-
-        const hasImage =
-            findMedia(
-                data,
-                "image"
-            );
-
-        const hasAudio =
-            findMedia(
-                data,
-                "mp3"
-            );
-
-        // VIDEO
-        if (hasVideo) {
-
-            keyboard.push([
-                {
-                    text: "វីដេអូ",
-                    callback_data:
-                        "video"
-                }
-            ]);
-
+        if (findMedia(data, "video")) {
+            keyboard.push([{ text: "🎬 Video", callback_data: "video" }]);
         }
 
-        // IMAGE
-        if (hasImage) {
-
-            keyboard.push([
-                {
-                    text: "រូបភាព",
-                    callback_data:
-                        "image"
-                }
-            ]);
-
+        if (findMedia(data, "image")) {
+            keyboard.push([{ text: "🖼 Image", callback_data: "image" }]);
         }
 
-        // AUDIO
-        if (hasAudio) {
-
-            keyboard.push([
-                {
-                    text: "សំឡេង",
-                    callback_data:
-                        "mp3"
-                }
-            ]);
-
+        if (findMedia(data, "mp3")) {
+            keyboard.push([{ text: "🎵 MP3", callback_data: "mp3" }]);
         }
 
-        // TOOLS
-        keyboard.push([
-            {
-                text: "ប្រើច្រើនជាងនេះ",
-                web_app: {
-                    url: "https://tools-amertak.vercel.app"
-                }
+        keyboard.push([{
+            text: "🔵 Tools",
+            web_app: {
+                url: "https://tools-amertak.vercel.app"
             }
-        ]);
+        }]);
 
-        return bot.sendMessage(
-            chatId,
-            "📂 ជ្រើសរើស format",
+        return bot.sendMessage(chatId,
+            "📂 Choose format",
             {
                 reply_markup: {
-                    inline_keyboard:
-                        keyboard
+                    inline_keyboard: keyboard
                 }
             }
         );
-
     }
 
-    return bot.sendMessage(
-        chatId,
-        "📎 សូមផ្ញើលីងមកខ្ញុំ"
+    bot.sendMessage(chatId,
+        "📎 Send valid URL"
     );
 
 });
@@ -820,51 +452,18 @@ bot.on(
 // CALLBACK QUERY
 // ========================
 
-bot.on(
-    "callback_query",
-    async (query) => {
+bot.on("callback_query", async (query) => {
 
-    const chatId =
-        query.message.chat.id;
+    const chatId = query.message.chat.id;
+    const data = userStates[chatId]?.data;
 
-    const action =
-        query.data;
+    await bot.answerCallbackQuery(query.id);
 
-    await bot.answerCallbackQuery(
-        query.id
-    );
+    if (!data) return bot.sendMessage(chatId, "❌ Session expired");
 
-    const data =
-        userStates[chatId]?.data;
+    const media = findMedia(data, query.data);
+    if (!media) return bot.sendMessage(chatId, "❌ Not found");
 
-    if (!data) {
-
-        return bot.sendMessage(
-            chatId,
-            "❌ Session expired"
-        );
-
-    }
-
-    const media =
-        findMedia(
-            data,
-            action
-        );
-
-    if (!media) {
-
-        return bot.sendMessage(
-            chatId,
-            "❌ រកមិនឃើញ media"
-        );
-
-    }
-
-    return sendFile(
-        chatId,
-        media,
-        data
-    );
+    sendFile(chatId, media, data);
 
 });
