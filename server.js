@@ -621,7 +621,7 @@ async function handleLink(chatId, url) {
 }
 
 // ========================
-// CALLBACK QUERY HANDLER
+// CALLBACK - QUERY HANDLER
 // ========================
 bot.on("callback_query", async (query) => {
     const chatId = query.message.chat.id;
