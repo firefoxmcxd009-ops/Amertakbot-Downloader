@@ -3,7 +3,11 @@ require("dotenv").config();
 const fs          = require("fs");
 const express     = require("express");
 const axios       = require("axios");
+const compression = require("compression");
+const helmet      = require("helmet");
 const TelegramBot = require("node-telegram-bot-api");
+
+const app = express();
 
 // ========================
 // CONFIG
@@ -15,256 +19,436 @@ const API_KEY  = process.env.API_KEY || "amertak_super_key_2026";
 const PORT     = process.env.PORT || 3000;
 
 // ========================
-// VALIDATE
+// VALIDATE ENV
 // ========================
-if (!TOKEN)    throw new Error("BOT_TOKEN missing");
-if (!OWNER_ID)  throw new Error("OWNER_ID missing");
-if (!API_BASE)  throw new Error("API_BASE missing");
+if (!TOKEN) {
+    console.error("[FATAL] BOT_TOKEN missing");
+    process.exit(1);
+}
+if (!OWNER_ID) {
+    console.error("[FATAL] OWNER_ID missing");
+    process.exit(1);
+}
+if (!API_BASE) {
+    console.error("[FATAL] API_BASE missing");
+    process.exit(1);
+}
+
+// ========================
+// SECURITY MIDDLEWARE
+// ========================
+app.use(helmet({ contentSecurityPolicy: false }));
+app.use(compression());
+app.use(express.json({ limit: "50mb" }));
+
+app.use((req, res, next) => {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Headers", "*");
+    next();
+});
 
 // ========================
 // BOT INIT
 // ========================
 const bot = new TelegramBot(TOKEN, {
-    polling: true
+    polling: {
+        autoStart: true,
+        interval: 300,
+        params: { timeout: 10 }
+    }
 });
 
 // ========================
-// EXPRESS (for Render keep-alive)
+// DATABASE
 // ========================
-const app = express();
-app.use(express.json());
+const DB_FILE = "./users.json";
+const STATS_FILE = "./stats.json";
 
-app.get("/", (req, res) => {
-    res.json({
-        status: "ok",
-        bot: "Amertak Telegram Bot",
-        uptime: process.uptime()
-    });
-});
+function ensure(file, fallback) {
+    if (!fs.existsSync(file)) {
+        fs.writeFileSync(file, JSON.stringify(fallback, null, 2));
+    }
+}
+ensure(DB_FILE, []);
+ensure(STATS_FILE, { downloads: 0, links: 0 });
 
-app.get("/health", (req, res) => {
-    res.json({ alive: true });
-});
+function loadUsers() {
+    try {
+        return new Set(JSON.parse(fs.readFileSync(DB_FILE, "utf8")));
+    } catch {
+        return new Set();
+    }
+}
 
-app.listen(PORT, () => {
-    console.log(`Bot server running on ${PORT}`);
-});
+function saveUsers(u) {
+    fs.writeFileSync(DB_FILE, JSON.stringify([...u], null, 2));
+}
+
+function loadStats() {
+    try {
+        return JSON.parse(fs.readFileSync(STATS_FILE, "utf8"));
+    } catch {
+        return { downloads: 0, links: 0 };
+    }
+}
+
+function saveStats(s) {
+    fs.writeFileSync(STATS_FILE, JSON.stringify(s, null, 2));
+}
+
+const users = loadUsers();
+const stats = loadStats();
+
+function addUser(id) {
+    id = String(id);
+    if (!users.has(id)) {
+        users.add(id);
+        saveUsers(users);
+    }
+}
+
+function incrementStat(k) {
+    stats[k] = (stats[k] || 0) + 1;
+    saveStats(stats);
+}
 
 // ========================
-// MEMORY DB
+// RATE LIMIT
 // ========================
-const users = new Set();
+const RATE_LIMIT = new Map();
+const RATE_MS = 3000;
+
+function isRateLimited(chatId) {
+    const last = RATE_LIMIT.get(String(chatId));
+    return last ? Date.now() - last < RATE_MS : false;
+}
+
+function updateRate(chatId) {
+    RATE_LIMIT.set(String(chatId), Date.now());
+}
 
 // ========================
-// EMOJI
+// EMOJIS
 // ========================
 const A = {
-    start: "🚀",
-    link: "🔗",
     loading: "⏳",
-    success: "✅",
+    search: "🔍",
     error: "❌",
+    warn: "⚠️",
     download: "⬇️",
     video: "🎬",
-    audio: "🎵",
-    image: "🖼"
+    music: "🎵",
+    image: "🖼",
+    user: "👤",
+    time: "⏱",
+    eyes: "👁",
+    folder: "📂",
+    phone: "📱",
+    link: "🔗",
+    rocket: "🚀",
+    mega: "📢",
+    done: "🎉"
 };
 
 // ========================
-// HELPERS
+// PLATFORM EMOJI
 // ========================
-function isValidURL(text) {
-    return /^https?:\/\//.test(text);
+const PLATFORM_EMOJI = {
+    youtube: "▶️",
+    tiktok: "🎵",
+    instagram: "📸",
+    facebook: "👤",
+    pinterest: "📌",
+    twitter: "🐦",
+    spotify: "🎧",
+    soundcloud: "☁️"
+};
+
+function getPlatformEmoji(p = "") {
+    return PLATFORM_EMOJI[p.toLowerCase()] || "🌐";
 }
 
-function safeText(text = "") {
-    return String(text).replace(/</g, "&lt;").replace(/>/g, "&gt;");
+// ========================
+// HELPERS (FIXED BUGS)
+// ========================
+function isValidURL(t = "") {
+    return /^https?:\/\//i.test(t);
+}
+
+function isImage(url = "") {
+    return /\.(jpg|jpeg|png|webp|gif)/i.test(url);
+}
+
+function escapeHtml(t = "") {
+    return String(t)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
 }
 
 // ========================
-// FETCH FROM BACKEND API
+// SAFE TELEGRAM
 // ========================
-async function fetchMedia(url) {
-    const res = await axios.get(`${API_BASE}/api/download`, {
-        params: { url },
-        headers: { "x-api-key": API_KEY },
-        timeout: 120000
+async function safeSend(chatId, text, opt = {}) {
+    try {
+        return await bot.sendMessage(chatId, text, opt);
+    } catch (e) {
+        console.error("[SEND]", e.message);
+    }
+}
+
+async function safeDelete(chatId, id) {
+    try {
+        await bot.deleteMessage(chatId, id);
+    } catch {}
+}
+
+async function safeEdit(chatId, id, text) {
+    try {
+        await bot.editMessageText(text, {
+            chat_id: chatId,
+            message_id: id
+        });
+    } catch {}
+}
+
+// ========================
+// FETCH MEDIA (FIXED TEMPLATE STRING)
+// ========================
+async function fetchMedia(chatId, url) {
+    const loading = await safeSend(chatId, `${A.search} កំពុងស្វែងរក...`);
+
+    try {
+        incrementStat("links");
+
+        const res = await axios.get(`${API_BASE}/api/download`, {
+            params: { url },
+            headers: { "x-api-key": API_KEY },
+            timeout: 120000
+        });
+
+        await safeDelete(chatId, loading?.message_id);
+
+        return res.data?.result;
+    } catch (err) {
+        await safeDelete(chatId, loading?.message_id);
+
+        const msg = err?.response?.data?.error || err.message;
+
+        await safeSend(chatId, `${A.error} ${msg}`);
+        return null;
+    }
+}
+
+// ========================
+// MEDIA FILTER
+// ========================
+function findAllByType(data, type) {
+    if (!Array.isArray(data?.medias)) return [];
+
+    return data.medias.filter(m => {
+        const t = (m.type || "").toLowerCase();
+
+        if (type === "video") return t === "video";
+        if (type === "audio")
+            return t === "audio" || /\.(mp3|m4a|ogg|wav)/i.test(m.url || "");
+        if (type === "image")
+            return t === "image" || isImage(m.url || "");
+
+        return false;
     });
-
-    return res.data.result;
 }
 
 // ========================
-// BUILD MESSAGE
+// BUILD CAPTION (FIXED ${} BUG)
 // ========================
-function buildInfo(data) {
-    return `
-${A.link} <b>${safeText(data.title)}</b>
+function buildCaption(data) {
 
-👤 ${safeText(data.author || "Unknown")}
-🌐 ${data.platform}
-`;
+    const emoji = getPlatformEmoji(data.platform);
+
+    const lines = [];
+
+    lines.push(
+        `${emoji} <b>${escapeHtml(data.title || "Untitled")}</b>`
+    );
+
+    if (data.author) {
+        lines.push(`${A.user} ${escapeHtml(data.author)}`);
+    }
+
+    if (data.duration) {
+        lines.push(`${A.time} ${data.duration}s`);
+    }
+
+    if (data.views) {
+        lines.push(`${A.eyes} ${data.views}`);
+    }
+
+    if (data.platform) {
+        lines.push(`${A.phone} ${data.platform}`);
+    }
+
+    return lines.join("\n");
 }
 
 // ========================
-// SEND MEDIA OPTIONS
+// KEYBOARD (FIXED)
 // ========================
-async function sendOptions(chatId, data) {
-    const keyboard = [];
+function buildKeyboard(data) {
 
-    const videos = data.medias.filter(m => m.type === "video");
-    const audios = data.medias.filter(m => m.type === "audio");
-    const images = data.medias.filter(m => m.type === "image");
+    const videos = findAllByType(data, "video");
+    const audios = findAllByType(data, "audio");
+    const images = findAllByType(data, "image");
+
+    const kb = [];
 
     if (videos.length) {
-        keyboard.push(videos.map((v, i) => ({
-            text: `${A.video} ${v.quality || "Video"}`,
-            callback_data: `video_${i}`
+        kb.push(videos.map((v, i) => ({
+            text: `🎬 ${v.quality || "Video"}`,
+            callback_data: `dl_video_${i}`
         })));
     }
 
     if (audios.length) {
-        keyboard.push(audios.map((a, i) => ({
-            text: `${A.audio} ${a.quality || "Audio"}`,
-            callback_data: `audio_${i}`
+        kb.push(audios.map((a, i) => ({
+            text: `🎵 ${a.quality || "Audio"}`,
+            callback_data: `dl_audio_${i}`
         })));
     }
 
     if (images.length) {
-        keyboard.push(images.map((i, idx) => ({
-            text: `${A.image} Image ${idx + 1}`,
-            callback_data: `image_${idx}`
+        kb.push(images.map((i, idx) => ({
+            text: `🖼 ${i.quality || "Image"}`,
+            callback_data: `dl_image_${idx}`
         })));
     }
 
-    keyboard.push([{
+    kb.push([{
         text: "🛠 Tools",
-        url: "https://tools-amertak.vercel.app"
+        web_app: { url: "https://tools-amertak.vercel.app" }
     }]);
 
-    await bot.sendMessage(chatId, buildInfo(data), {
-        parse_mode: "HTML",
-        reply_markup: {
-            inline_keyboard: keyboard
-        }
-    });
+    return kb;
 }
 
 // ========================
-// DOWNLOAD FILE
+// HANDLE MEDIA
 // ========================
-async function downloadFile(chatId, url, type) {
-    const loading = await bot.sendMessage(chatId, `${A.loading} Downloading...`);
+const state = new Map();
 
-    try {
-        const res = await axios({
-            url,
-            method: "GET",
-            responseType: "stream"
-        });
+async function handleMedia(msg, url) {
 
-        const chunks = [];
+    const chatId = msg.chat.id;
 
-        res.data.on("data", chunk => chunks.push(chunk));
+    if (isRateLimited(chatId)) {
+        return safeSend(chatId, `${A.warn} Slow down`);
+    }
 
-        res.data.on("end", async () => {
-            const buffer = Buffer.concat(chunks);
+    updateRate(chatId);
 
-            if (type === "video") {
-                await bot.sendVideo(chatId, buffer);
-            } else if (type === "audio") {
-                await bot.sendAudio(chatId, buffer);
-            } else {
-                await bot.sendDocument(chatId, buffer);
+    const data = await fetchMedia(chatId, url);
+    if (!data) return;
+
+    state.set(String(chatId), data);
+
+    await safeSend(chatId,
+        buildCaption(data),
+        {
+            parse_mode: "HTML",
+            reply_markup: {
+                inline_keyboard: buildKeyboard(data)
             }
-
-            await bot.deleteMessage(chatId, loading.message_id);
-        });
-
-    } catch (err) {
-        await bot.sendMessage(chatId, `${A.error} Failed download`);
-    }
+        }
+    );
 }
 
 // ========================
-// START COMMAND
+// BOT EVENTS
 // ========================
-bot.onText(/\/start/, async (msg) => {
-    const chatId = msg.chat.id;
+bot.onText(/\/start/, async msg => {
+    addUser(msg.chat.id);
 
-    users.add(chatId);
+    safeSend(msg.chat.id,
+`${A.rocket} Amertak Bot Ready
 
-    await bot.sendMessage(chatId,
-`${A.start} <b>Welcome to Amertak Downloader Bot</b>
-
-Send me any link:
-YouTube, TikTok, Instagram, Facebook, etc.
-
-${A.link} Just paste URL`,
-{
-    parse_mode: "HTML"
-});
+Send any link:
+YouTube, TikTok, Instagram, etc.`);
 });
 
-// ========================
-// HANDLE URL MESSAGE
-// ========================
-bot.on("message", async (msg) => {
-    const chatId = msg.chat.id;
+bot.on("message", async msg => {
     const text = msg.text;
+    if (!text || text.startsWith("/")) return;
 
-    if (!text || !isValidURL(text)) return;
-    if (text.startsWith("/")) return;
+    addUser(msg.chat.id);
 
-    try {
-        const data = await fetchMedia(text);
-
-        await sendOptions(chatId, data);
-
-        // store temp
-        global.lastData = global.lastData || {};
-        global.lastData[chatId] = data;
-
-    } catch (err) {
-        await bot.sendMessage(chatId, `${A.error} Cannot process link`);
+    if (isValidURL(text)) {
+        await handleMedia(msg, text);
     }
 });
 
 // ========================
-// CALLBACK BUTTONS
+// CALLBACK (FIXED)
 // ========================
-bot.on("callback_query", async (q) => {
+bot.on("callback_query", async q => {
+
     const chatId = q.message.chat.id;
-    const data = global.lastData?.[chatId];
+    const data = state.get(String(chatId));
 
     if (!data) {
-        return bot.answerCallbackQuery(q.id, { text: "Expired session" });
+        return safeSend(chatId, `${A.warn} Session expired`);
     }
 
-    const [type, index] = q.data.split("_");
+    const [, type, index] = q.data.split("_");
 
     let media;
 
-    if (type === "video") {
-        media = data.medias.filter(m => m.type === "video")[index];
-    } else if (type === "audio") {
-        media = data.medias.filter(m => m.type === "audio")[index];
-    } else if (type === "image") {
-        media = data.medias.filter(m => m.type === "image")[index];
-    }
+    if (type === "video") media = findAllByType(data, "video")[index];
+    if (type === "audio") media = findAllByType(data, "audio")[index];
+    if (type === "image") media = findAllByType(data, "image")[index];
 
     if (!media) {
-        return bot.answerCallbackQuery(q.id, { text: "Not found" });
+        return safeSend(chatId, `${A.error} Not found`);
     }
 
-    bot.answerCallbackQuery(q.id, { text: "Downloading..." });
+    const stream = await axios.get(
+        `${API_BASE}/api/proxy?url=${encodeURIComponent(media.url)}`,
+        { responseType: "arraybuffer" }
+    );
 
-    await downloadFile(chatId, media.url, media.type);
+    const buffer = Buffer.from(stream.data);
+
+    if (type === "video") {
+        await bot.sendVideo(chatId, buffer);
+    } else if (type === "audio") {
+        await bot.sendAudio(chatId, buffer);
+    } else {
+        await bot.sendPhoto(chatId, buffer);
+    }
+
+    incrementStat("downloads");
 });
 
 // ========================
-// KEEP ALIVE
+// EXPRESS
 // ========================
-setInterval(() => {
-    axios.get(`http://localhost:${PORT}`).catch(() => {});
-}, 5 * 60 * 1000);
+app.get("/", (_, res) => {
+    res.json({
+        status: "ok",
+        users: users.size,
+        downloads: stats.downloads
+    });
+});
+
+app.get("/health", (_, res) => {
+    res.json({ alive: true });
+});
+
+// ========================
+// START
+// ========================
+app.listen(PORT, () => {
+    console.log(`BOT RUNNING ON PORT ${PORT}`);
+});
+
+process.on("unhandledRejection", console.error);
+process.on("uncaughtException", console.error);
