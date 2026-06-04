@@ -1,7 +1,6 @@
 require("dotenv").config();
 
 const fs = require("fs");
-const path = require("path");
 const express = require("express");
 const axios = require("axios");
 const TelegramBot = require("node-telegram-bot-api");
@@ -9,36 +8,27 @@ const TelegramBot = require("node-telegram-bot-api");
 // ========================
 // CONFIG
 // ========================
-const TOKEN = process.env.BOT_TOKEN;
+const TOKEN    = process.env.BOT_TOKEN;
 const OWNER_ID = process.env.OWNER_ID;
 const API_BASE = process.env.API_BASE;
-const API_KEY = process.env.API_KEY || "amertak_super_key_2026";
-const PORT = process.env.PORT || 3000;
+const API_KEY  = process.env.API_KEY || "amertak_super_key_2026";
+const PORT     = process.env.PORT    || 3000;
 
 // ========================
 // VALIDATE ENV
 // ========================
-if (!TOKEN) {
-    console.error("[FATAL] BOT_TOKEN is missing in .env");
-    process.exit(1);
-}
-if (!OWNER_ID) {
-    console.error("[FATAL] OWNER_ID is missing in .env");
-    process.exit(1);
-}
-if (!API_BASE) {
-    console.error("[FATAL] API_BASE is missing in .env");
-    process.exit(1);
-}
+if (!TOKEN)    { console.error("[FATAL] BOT_TOKEN is missing");  process.exit(1); }
+if (!OWNER_ID) { console.error("[FATAL] OWNER_ID is missing");   process.exit(1); }
+if (!API_BASE) { console.error("[FATAL] API_BASE is missing");   process.exit(1); }
 
 // ========================
 // INIT BOT
 // ========================
 const bot = new TelegramBot(TOKEN, {
     polling: {
-        interval: 300,
-        autoStart: true,
-        params: { timeout: 10 }
+        interval  : 300,
+        autoStart : true,
+        params    : { timeout: 10 }
     }
 });
 
@@ -46,39 +36,29 @@ const bot = new TelegramBot(TOKEN, {
 // INIT EXPRESS
 // ========================
 const app = express();
-
 app.use(express.json());
 
-app.get("/", (_, res) => {
-    res.json({
-        status: "ok",
-        bot: "Amertak Bot",
-        uptime: Math.floor(process.uptime()) + "s",
-        users: users.size
-    });
-});
+app.get("/", (_, res) => res.json({
+    status : "ok",
+    bot    : "Amertak Bot",
+    uptime : Math.floor(process.uptime()) + "s",
+    users  : users.size
+}));
 
-app.get("/health", (_, res) => {
-    res.json({ alive: true, timestamp: new Date().toISOString() });
-});
+app.get("/health", (_, res) => res.json({ alive: true, timestamp: new Date().toISOString() }));
 
-app.listen(PORT, () => {
-    console.log(`[SERVER] Running on port ${PORT}`);
-});
+app.listen(PORT, () => console.log(`[SERVER] Running on port ${PORT}`));
 
 // ========================
 // DATABASE
 // ========================
-const DB_FILE = "./users.json";
+const DB_FILE    = "./users.json";
 const STATS_FILE = "./stats.json";
 
 function loadUsers() {
     try {
-        if (!fs.existsSync(DB_FILE)) {
-            fs.writeFileSync(DB_FILE, "[]");
-        }
-        const raw = fs.readFileSync(DB_FILE, "utf-8");
-        return new Set(JSON.parse(raw));
+        if (!fs.existsSync(DB_FILE)) fs.writeFileSync(DB_FILE, "[]");
+        return new Set(JSON.parse(fs.readFileSync(DB_FILE, "utf-8")));
     } catch {
         console.warn("[DB] Could not load users, starting fresh.");
         return new Set();
@@ -86,28 +66,20 @@ function loadUsers() {
 }
 
 function saveUsers(set) {
-    try {
-        fs.writeFileSync(DB_FILE, JSON.stringify([...set], null, 2));
-    } catch (err) {
-        console.error("[DB] Failed to save users:", err.message);
-    }
+    try { fs.writeFileSync(DB_FILE, JSON.stringify([...set], null, 2)); }
+    catch (err) { console.error("[DB] Failed to save users:", err.message); }
 }
 
 function loadStats() {
     try {
-        if (!fs.existsSync(STATS_FILE)) {
+        if (!fs.existsSync(STATS_FILE))
             fs.writeFileSync(STATS_FILE, JSON.stringify({ downloads: 0, links: 0 }));
-        }
         return JSON.parse(fs.readFileSync(STATS_FILE, "utf-8"));
-    } catch {
-        return { downloads: 0, links: 0 };
-    }
+    } catch { return { downloads: 0, links: 0 }; }
 }
 
 function saveStats(data) {
-    try {
-        fs.writeFileSync(STATS_FILE, JSON.stringify(data, null, 2));
-    } catch {}
+    try { fs.writeFileSync(STATS_FILE, JSON.stringify(data, null, 2)); } catch {}
 }
 
 const users = loadUsers();
@@ -115,10 +87,7 @@ const stats = loadStats();
 
 function addUser(id) {
     id = String(id);
-    if (!users.has(id)) {
-        users.add(id);
-        saveUsers(users);
-    }
+    if (!users.has(id)) { users.add(id); saveUsers(users); }
 }
 
 function incrementStat(key) {
@@ -129,19 +98,18 @@ function incrementStat(key) {
 // ========================
 // STATES (in-memory)
 // ========================
-const userStates = new Map();   // chatId -> { data, url }
+const userStates  = new Map();  // chatId -> { data, url }
 const replyStates = new Map();  // chatId -> targetUserId
 const rateLimiter = new Map();  // chatId -> timestamp
 
 // ========================
 // RATE LIMIT
 // ========================
-const RATE_LIMIT_MS = 3000; // 3 seconds between requests
+const RATE_LIMIT_MS = 3000;
 
 function isRateLimited(chatId) {
     const last = rateLimiter.get(String(chatId));
-    if (!last) return false;
-    return Date.now() - last < RATE_LIMIT_MS;
+    return last ? Date.now() - last < RATE_LIMIT_MS : false;
 }
 
 function setRateLimit(chatId) {
@@ -160,9 +128,8 @@ function isValidURL(text = "") {
 }
 
 function renderProgressBar(percent) {
-    const total = 10;
     const filled = Math.round((Math.min(percent, 100)) / 10);
-    return "█".repeat(filled) + "░".repeat(total - filled);
+    return "█".repeat(filled) + "░".repeat(10 - filled);
 }
 
 function formatBytes(bytes = 0) {
@@ -179,82 +146,55 @@ function formatDuration(seconds = 0) {
     return `${m}:${String(s).padStart(2, "0")}`;
 }
 
-function escapeHtml(text = "") {
-    return text
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;");
-}
-
-function getUsername(from) {
-    return from?.username ? `@${from.username}` : "none";
-}
-
-function getFullName(from) {
-    return `${from?.first_name || ""} ${from?.last_name || ""}`.trim() || "Unknown";
-}
+function getUsername(from) { return from?.username ? `@${from.username}` : "none"; }
+function getFullName(from)  { return `${from?.first_name || ""} ${from?.last_name || ""}`.trim() || "Unknown"; }
 
 // ========================
-// SAFE DELETE MESSAGE
+// SAFE HELPERS
 // ========================
 async function safeDelete(chatId, messageId) {
-    try {
-        await bot.deleteMessage(chatId, messageId);
-    } catch {}
+    try { await bot.deleteMessage(chatId, messageId); } catch {}
 }
 
-// ========================
-// SAFE SEND
-// ========================
 async function safeSend(chatId, text, options = {}) {
-    try {
-        return await bot.sendMessage(chatId, text, options);
-    } catch (err) {
-        console.error(`[SEND] Failed to ${chatId}:`, err.message);
-        return null;
-    }
+    try { return await bot.sendMessage(chatId, text, options); }
+    catch (err) { console.error(`[SEND] Failed to ${chatId}:`, err.message); return null; }
 }
 
-// ========================
-// SAFE EDIT MESSAGE
-// ========================
 async function safeEdit(chatId, messageId, text) {
-    try {
-        return await bot.editMessageText(text, {
-            chat_id: chatId,
-            message_id: messageId
-        });
-    } catch {}
+    try { return await bot.editMessageText(text, { chat_id: chatId, message_id: messageId }); }
+    catch {}
 }
 
 // ========================
 // FETCH MEDIA INFO
 // ========================
-async function fetchVideo(chatId, url) {
+async function fetchMedia(chatId, url) {
     const loading = await safeSend(chatId, "⏳ កំពុងស្វែងរកព័ត៌មាន...");
 
     try {
         incrementStat("links");
 
         const response = await axios.get(`${API_BASE}/api/download`, {
-            params: { url },
-            headers: { "x-api-key": API_KEY },
-            timeout: 120000
+            params  : { url },
+            headers : { "x-api-key": API_KEY },
+            timeout : 120000
         });
 
         await safeDelete(chatId, loading?.message_id);
-        return response.data;
+        return response.data?.result || response.data;
 
     } catch (err) {
-        const msg = err?.response?.data?.message || err.message || "Unknown error";
-        console.error(`[FETCH] Error for ${url}:`, msg);
-
-        await safeDelete(chatId, loading?.message_id);
-
+        const msg        = err?.response?.data?.message || err.message || "Unknown error";
         const statusCode = err?.response?.status;
+
+        console.error(`[FETCH] Error for ${url}:`, msg);
+        await safeDelete(chatId, loading?.message_id);
 
         if (statusCode === 429) {
             await safeSend(chatId, "⚠️ Too many requests. Please wait a moment.");
+        } else if (statusCode === 400) {
+            await safeSend(chatId, "❌ Unsupported platform or invalid link.");
         } else if (statusCode === 404) {
             await safeSend(chatId, "❌ Link not found or unsupported platform.");
         } else {
@@ -266,146 +206,76 @@ async function fetchVideo(chatId, url) {
 }
 
 // ========================
-// FIND MEDIA
+// FIND MEDIA BY TYPE & INDEX
 // ========================
-function findMedia(data, type) {
-    if (!data?.medias || !Array.isArray(data.medias)) return null;
+function findAllByType(data, type) {
+    if (!data?.medias || !Array.isArray(data.medias)) return [];
 
     if (type === "video") {
-        return data.medias.find(m => m.type?.toLowerCase() === "video");
+        return data.medias.filter(m => m.type?.toLowerCase() === "video");
     }
     if (type === "audio") {
-        return data.medias.find(m => m.type?.toLowerCase() === "audio");
+        return data.medias.filter(m =>
+            m.type?.toLowerCase() === "audio" ||
+            m.type?.toLowerCase() === "audio_preview"
+        );
     }
     if (type === "image") {
-        return data.medias.find(m =>
-            m.type?.toLowerCase() === "image" || isImage(m.url)
+        return data.medias.filter(m =>
+            m.type?.toLowerCase() === "image" || isImage(m.url || "")
         );
     }
 
-    return null;
+    return [];
 }
 
-// ========================
-// STREAM DOWNLOADER
-// ========================
-async function sendFile(chatId, media, data) {
-    const progressMessage = await safeSend(chatId,
-`⬇️ កំពុងទាញយក...
-
-[░░░░░░░░░░] 0%`
-    );
-
-    if (!progressMessage) return;
-
-    let downloadDone = false;
-
-    try {
-        const response = await axios.get(`${API_BASE}/api/proxy`, {
-            responseType: "stream",
-            params: { url: media.url },
-            timeout: 0
-        });
-
-        const total = parseInt(response.headers["content-length"] || "0", 10);
-        let downloaded = 0;
-        let lastUpdate = 0;
-        const chunks = [];
-
-        response.data.on("data", async (chunk) => {
-            downloaded += chunk.length;
-            chunks.push(chunk);
-
-            const percent = total ? Math.floor((downloaded / total) * 100) : 0;
-            const now = Date.now();
-
-            if (now - lastUpdate < 1500) return;
-            lastUpdate = now;
-
-            const bar = renderProgressBar(percent);
-            const dlSize = formatBytes(downloaded);
-            const totalSize = formatBytes(total);
-
-            await safeEdit(chatId, progressMessage.message_id,
-`⬇️ កំពុងទាញយក...
-
-[${bar}] ${percent}%
-${dlSize} / ${totalSize}`
-            );
-        });
-
-        response.data.on("end", async () => {
-            downloadDone = true;
-
-            const buffer = Buffer.concat(chunks);
-            const caption = [
-                data.title || "Downloaded",
-                data.author   ? `👤 ${data.author}` : "",
-                data.duration ? `⏱ ${formatDuration(data.duration)}` : "",
-                data.platform ? `📱 ${data.platform}` : ""
-            ].filter(Boolean).join("\n");
-
-            try {
-                const type = media.type?.toLowerCase();
-
-                if (type === "audio") {
-                    await bot.sendAudio(chatId, buffer, {
-                        caption,
-                        title: data.title || "Audio",
-                        performer: data.author || "Amertak"
-                    });
-                } else if (type === "video") {
-                    await bot.sendVideo(chatId, buffer, {
-                        caption,
-                        supports_streaming: true
-                    });
-                } else if (type === "image" || isImage(media.url)) {
-                    await bot.sendPhoto(chatId, buffer, { caption });
-                } else {
-                    await bot.sendDocument(chatId, buffer, { caption });
-                }
-
-                incrementStat("downloads");
-
-            } catch (err) {
-                console.error("[SEND_FILE]", err.message);
-                await safeSend(chatId, "❌ បរាជ័យក្នុងការផ្ញើឯកសារ");
-            }
-
-            await safeDelete(chatId, progressMessage.message_id);
-        });
-
-        response.data.on("error", async (err) => {
-            console.error("[STREAM_ERROR]", err.message);
-            if (!downloadDone) {
-                await safeSend(chatId, "❌ Download Error — stream interrupted");
-            }
-            await safeDelete(chatId, progressMessage.message_id);
-        });
-
-    } catch (err) {
-        console.error("[DOWNLOAD]", err.message);
-        await safeSend(chatId, "❌ Server Error — please try again");
-        await safeDelete(chatId, progressMessage.message_id);
-    }
+function findMediaByIndex(data, type, index = 0) {
+    const list = findAllByType(data, type);
+    return list[index] || null;
 }
 
 // ========================
 // BUILD FORMAT KEYBOARD
+// (called after media info is fetched)
 // ========================
-function buildKeyboard(data) {
+function buildFormatKeyboard(data) {
     const keyboard = [];
 
-    const row1 = [];
-    if (findMedia(data, "video")) row1.push({ text: "🎬 Video", callback_data: "video" });
-    if (findMedia(data, "audio")) row1.push({ text: "🎵 Audio", callback_data: "audio" });
-    if (row1.length > 0) keyboard.push(row1);
+    const videos = findAllByType(data, "video");
+    const audios  = findAllByType(data, "audio");
+    const images  = findAllByType(data, "image");
 
-    if (findMedia(data, "image")) keyboard.push([{ text: "🖼 Image", callback_data: "image" }]);
+    // VIDEO row — show up to 3 quality options
+    if (videos.length) {
+        const videoRow = videos.slice(0, 3).map((v, i) => ({
+            text          : `🎬 ${v.quality || "Video" + (videos.length > 1 ? ` ${i + 1}` : "")}`,
+            callback_data : `dl_video_${i}`
+        }));
+        keyboard.push(videoRow);
+    }
 
+    // AUDIO row
+    if (audios.length) {
+        const audioRow = audios.slice(0, 3).map((a, i) => ({
+            text          : `🎵 ${a.quality || "MP3" + (audios.length > 1 ? ` ${i + 1}` : "")}`,
+            callback_data : `dl_audio_${i}`
+        }));
+        keyboard.push(audioRow);
+    }
+
+    // IMAGE row
+    if (images.length) {
+        const imageRow = images.slice(0, 3).map((img, i) => ({
+            text          : `🖼 ${img.quality || "Image" + (images.length > 1 ? ` ${i + 1}` : "")}`,
+            callback_data : `dl_image_${i}`
+        }));
+        keyboard.push(imageRow);
+    }
+
+    // Tools button
     keyboard.push([{
-        text: "🛠 Tools",
-        web_app: { url: "https://tools-amertak.vercel.app" }
+        text    : "🛠 Tools",
+        web_app : { url: "https://tools-amertak.vercel.app" }
     }]);
 
     return keyboard;
@@ -425,35 +295,132 @@ function buildCaption(data) {
 }
 
 // ========================
+// STREAM & SEND FILE
+// ========================
+async function sendFile(chatId, media, data) {
+    const progressMessage = await safeSend(chatId,
+`⬇️ កំពុងទាញយក...
+
+[░░░░░░░░░░] 0%`
+    );
+
+    if (!progressMessage) return;
+
+    let downloadDone = false;
+
+    try {
+        const response = await axios.get(`${API_BASE}/api/proxy`, {
+            responseType : "stream",
+            params       : { url: media.url },
+            timeout      : 0
+        });
+
+        const total   = parseInt(response.headers["content-length"] || "0", 10);
+        let downloaded = 0;
+        let lastUpdate = 0;
+        const chunks   = [];
+
+        response.data.on("data", async (chunk) => {
+            downloaded += chunk.length;
+            chunks.push(chunk);
+
+            const percent = total ? Math.floor((downloaded / total) * 100) : 0;
+            const now     = Date.now();
+            if (now - lastUpdate < 1500) return;
+            lastUpdate = now;
+
+            await safeEdit(chatId, progressMessage.message_id,
+`⬇️ កំពុងទាញយក...
+
+[${renderProgressBar(percent)}] ${percent}%
+${formatBytes(downloaded)} / ${formatBytes(total)}`
+            );
+        });
+
+        response.data.on("end", async () => {
+            downloadDone = true;
+
+            const buffer  = Buffer.concat(chunks);
+            const caption = [
+                data.title    || "Downloaded",
+                data.author   ? `👤 ${data.author}`               : "",
+                data.duration ? `⏱ ${formatDuration(data.duration)}` : "",
+                data.platform ? `📱 ${data.platform}`              : ""
+            ].filter(Boolean).join("\n");
+
+            try {
+                const type = media.type?.toLowerCase();
+
+                if (type === "audio" || type === "audio_preview") {
+                    await bot.sendAudio(chatId, buffer, {
+                        caption,
+                        title     : data.title  || "Audio",
+                        performer : data.author || "Amertak"
+                    });
+                } else if (type === "video") {
+                    await bot.sendVideo(chatId, buffer, {
+                        caption,
+                        supports_streaming: true
+                    });
+                } else if (type === "image" || isImage(media.url || "")) {
+                    await bot.sendPhoto(chatId, buffer, { caption });
+                } else {
+                    await bot.sendDocument(chatId, buffer, { caption });
+                }
+
+                incrementStat("downloads");
+
+            } catch (err) {
+                console.error("[SEND_FILE]", err.message);
+                await safeSend(chatId, "❌ បរាជ័យក្នុងការផ្ញើឯកសារ");
+            }
+
+            await safeDelete(chatId, progressMessage.message_id);
+        });
+
+        response.data.on("error", async (err) => {
+            console.error("[STREAM_ERROR]", err.message);
+            if (!downloadDone) await safeSend(chatId, "❌ Download Error — stream interrupted");
+            await safeDelete(chatId, progressMessage.message_id);
+        });
+
+    } catch (err) {
+        console.error("[DOWNLOAD]", err.message);
+        await safeSend(chatId, "❌ Server Error — please try again");
+        await safeDelete(chatId, progressMessage.message_id);
+    }
+}
+
+// ========================
 // /start
 // ========================
 bot.onText(/\/start/, async (msg) => {
     addUser(msg.chat.id);
-    const name = getFullName(msg.from);
-
     await safeSend(msg.chat.id,
-`👋 សូមស្វាគមន៍ ${name}!
+`👋 សូមស្វាគមន៍ ${getFullName(msg.from)}!
 
 📥 របៀបប្រើ:
-1. ផ្ញើ Link វីដេអូ / ក្រុម / រូបភាព
-2. ជ្រើសរើស Format
-3. រងចាំ Download
+1. ផ្ញើ Link វីដេអូ / តន្ត្រី / រូបភាព
+2. ជ្រើសរើស Format ដែលចង់បាន 🎬 / 🎵 / 🖼
+3. រងចាំ Download ✅
+
+🌐 Platform ដែលគាំទ្រ:
+YouTube · TikTok · Instagram · Pinterest
+Facebook · Twitter/X · SoundCloud · Vimeo · Dailymotion
 
 📋 បញ្ជា:
 • /ask [សារ] — ផ្ញើសំណួរទៅ Owner
 • /id — មើល User ID
 • /stats — ស្ថិតិ Bot
-• /cancel — បោះបង់ Action ปัจจุบัน
+• /cancel — បោះបង់ Action បច្ចុប្បន្ន
 • /notify [សារ] — Broadcast (Owner Only)
 • /users — ចំនួន Users (Owner Only)`,
         {
             reply_markup: {
-                inline_keyboard: [[
-                    {
-                        text: "🛠 Tools",
-                        web_app: { url: "https://tools-amertak.vercel.app" }
-                    }
-                ]]
+                inline_keyboard: [[{
+                    text    : "🛠 Tools",
+                    web_app : { url: "https://tools-amertak.vercel.app" }
+                }]]
             }
         }
     );
@@ -491,17 +458,11 @@ bot.onText(/\/stats/, async (msg) => {
 // /cancel
 // ========================
 bot.onText(/\/cancel/, async (msg) => {
-    const chatId = msg.chat.id;
-
-    const wasReply = replyStates.has(String(chatId));
-    replyStates.delete(String(chatId));
-    userStates.delete(String(chatId));
-
-    await safeSend(chatId,
-        wasReply
-            ? "✅ Reply mode cancelled."
-            : "✅ Action cleared."
-    );
+    const chatId = String(msg.chat.id);
+    const wasReply = replyStates.has(chatId);
+    replyStates.delete(chatId);
+    userStates.delete(chatId);
+    await safeSend(msg.chat.id, wasReply ? "✅ Reply mode cancelled." : "✅ Action cleared.");
 });
 
 // ========================
@@ -509,7 +470,6 @@ bot.onText(/\/cancel/, async (msg) => {
 // ========================
 bot.onText(/\/users/, async (msg) => {
     if (String(msg.chat.id) !== String(OWNER_ID)) return;
-
     await safeSend(msg.chat.id,
 `👥 Users Summary
 
@@ -551,10 +511,8 @@ ${question}`,
 // ========================
 bot.onText(/\/reply (\d+) (.+)/, async (msg, match) => {
     if (String(msg.chat.id) !== String(OWNER_ID)) return;
-
     const userId = match[1];
-    const text = match[2].trim();
-
+    const text   = match[2].trim();
     try {
         await bot.sendMessage(userId, `📨 Reply From Owner\n\n${text}`);
         await safeSend(msg.chat.id, `✅ Reply sent to ${userId}`);
@@ -574,8 +532,7 @@ bot.onText(/\/notify (.+)/, async (msg, match) => {
     const text = match[1].trim();
     if (!text) return;
 
-    let success = 0;
-    let failed = 0;
+    let success = 0, failed = 0;
     const failedIds = [];
 
     const broadcastMsg = await safeSend(msg.chat.id, `📡 Broadcasting to ${users.size} users...`);
@@ -603,7 +560,7 @@ ${failedIds.length > 0 ? `\nFailed IDs: ${failedIds.slice(0, 10).join(", ")}${fa
 });
 
 // ========================
-// CALLBACK QUERY
+// CALLBACK QUERY HANDLER
 // ========================
 bot.on("callback_query", async (query) => {
     const chatId = query.message.chat.id;
@@ -611,9 +568,9 @@ bot.on("callback_query", async (query) => {
 
     await bot.answerCallbackQuery(query.id).catch(() => {});
 
-    // ========================
-    // REPLY MODE
-    // ========================
+    // ──────────────────────────
+    // REPLY MODE (Owner)
+    // ──────────────────────────
     if (action.startsWith("reply_")) {
         if (String(chatId) !== String(OWNER_ID)) return;
 
@@ -630,32 +587,36 @@ bot.on("callback_query", async (query) => {
         );
     }
 
-    // ========================
-    // DOWNLOAD FORMAT
-    // ========================
-    const state = userStates.get(String(chatId));
+    // ──────────────────────────
+    // FORMAT DOWNLOAD: dl_<type>_<index>
+    // ──────────────────────────
+    if (action.startsWith("dl_")) {
+        const parts  = action.split("_");  // ["dl", "video", "0"]
+        const type   = parts[1];           // "video" | "audio" | "image"
+        const index  = parseInt(parts[2] || "0", 10);
 
-    if (!state?.data) {
-        return safeSend(chatId, "⚠️ Session Expired — please send the link again.");
+        const state = userStates.get(String(chatId));
+
+        if (!state?.data) {
+            return safeSend(chatId, "⚠️ Session Expired — please send the link again.");
+        }
+
+        const media = findMediaByIndex(state.data, type, index);
+
+        if (!media?.url) {
+            return safeSend(chatId, `❌ No ${type} found for this link.`);
+        }
+
+        if (isRateLimited(chatId)) {
+            return bot.answerCallbackQuery(query.id, {
+                text       : "Please wait before downloading again.",
+                show_alert : true
+            }).catch(() => {});
+        }
+
+        setRateLimit(chatId);
+        return sendFile(chatId, media, state.data);
     }
-
-    const media = findMedia(state.data, action);
-
-    if (!media) {
-        return safeSend(chatId, `❌ No ${action} found for this link.`);
-    }
-
-    // prevent double-download spam
-    if (isRateLimited(chatId)) {
-        return bot.answerCallbackQuery(query.id, {
-            text: "Please wait before downloading again.",
-            show_alert: true
-        }).catch(() => {});
-    }
-
-    setRateLimit(chatId);
-
-    return sendFile(chatId, media, state.data);
 });
 
 // ========================
@@ -663,7 +624,7 @@ bot.on("callback_query", async (query) => {
 // ========================
 bot.on("message", async (msg) => {
     const chatId = msg.chat.id;
-    const text = msg.text;
+    const text   = msg.text;
 
     if (!text) return;
 
@@ -672,108 +633,99 @@ bot.on("message", async (msg) => {
     // skip commands
     if (text.startsWith("/")) return;
 
-    // ========================
+    // ──────────────────────────
     // OWNER REPLY MODE
-    // ========================
+    // ──────────────────────────
     if (String(chatId) === String(OWNER_ID) && replyStates.has(String(chatId))) {
         const targetUser = replyStates.get(String(chatId));
-
         try {
             await bot.sendMessage(targetUser, `📨 Reply From Owner\n\n${text}`);
             await safeSend(chatId, "✅ Reply sent!");
         } catch {
             await safeSend(chatId, "❌ Failed to send reply — user may have blocked the bot.");
         }
-
         replyStates.delete(String(chatId));
         return;
     }
 
-    // ========================
+    // ──────────────────────────
     // VALIDATE URL
-    // ========================
+    // ──────────────────────────
     if (!isValidURL(text)) {
         return safeSend(chatId, "⚠️ សូមផ្ញើ Link ត្រឹមត្រូវ (http:// ឬ https://)");
     }
 
-    // ========================
+    // ──────────────────────────
     // RATE LIMIT
-    // ========================
+    // ──────────────────────────
     if (isRateLimited(chatId)) {
         return safeSend(chatId, "⏳ Please wait a few seconds before sending another link.");
     }
     setRateLimit(chatId);
 
-    // ========================
+    // ──────────────────────────
     // FETCH MEDIA DATA
-    // ========================
-    const data = await fetchVideo(chatId, text);
+    // ──────────────────────────
+    const data = await fetchMedia(chatId, text);
     if (!data) return;
 
-    // cache state
+    // Cache state for callback
     userStates.set(String(chatId), { data, url: text });
 
-    // ========================
-    // THUMBNAIL
-    // ========================
+    // ──────────────────────────
+    // SHOW THUMBNAIL + INFO
+    // ──────────────────────────
+    const caption = buildCaption(data);
+
     if (data.thumbnail) {
         try {
-            await bot.sendPhoto(chatId, data.thumbnail, {
-                caption: buildCaption(data)
-            });
+            await bot.sendPhoto(chatId, data.thumbnail, { caption });
         } catch {
-            // thumbnail send failed, continue silently
+            await safeSend(chatId, caption);
         }
     }
 
-    // ========================
-    // FORMAT BUTTONS
-    // ========================
-    const keyboard = buildKeyboard(data);
+    // ──────────────────────────
+    // SHOW FORMAT SELECTION BUTTONS
+    // ──────────────────────────
+    const keyboard = buildFormatKeyboard(data);
 
-    return safeSend(chatId, "📂 ជ្រើសរើស Format ដើម្បីទាញយក:", {
-        reply_markup: { inline_keyboard: keyboard }
-    });
+    const videos = findAllByType(data, "video");
+    const audios  = findAllByType(data, "audio");
+    const images  = findAllByType(data, "image");
+
+    const summary = [
+        videos.length ? `🎬 Video: ${videos.length} quality option${videos.length > 1 ? "s" : ""}` : "",
+        audios.length ? `🎵 Audio: ${audios.length} option${audios.length > 1 ? "s" : ""}` : "",
+        images.length ? `🖼 Image: ${images.length} option${images.length > 1 ? "s" : ""}` : ""
+    ].filter(Boolean).join("\n");
+
+    return safeSend(chatId,
+`📂 ជ្រើសរើស Format ដែលចង់ទាញយក:
+
+${summary}`,
+        { reply_markup: { inline_keyboard: keyboard } }
+    );
 });
 
 // ========================
-// POLLING ERROR HANDLER
+// POLLING & BOT ERROR
 // ========================
-bot.on("polling_error", (err) => {
-    console.error("[POLLING]", err.code, err.message);
-});
-
-bot.on("error", (err) => {
-    console.error("[BOT_ERROR]", err.message);
-});
+bot.on("polling_error", (err) => console.error("[POLLING]", err.code, err.message));
+bot.on("error",         (err) => console.error("[BOT_ERROR]", err.message));
 
 // ========================
 // GRACEFUL SHUTDOWN
 // ========================
 async function shutdown(signal) {
-    console.log(`\n[SHUTDOWN] Received ${signal}. Saving data and exiting...`);
-    try {
-        saveUsers(users);
-        saveStats(stats);
-        await bot.stopPolling();
-    } catch (err) {
-        console.error("[SHUTDOWN] Error during cleanup:", err.message);
-    }
+    console.log(`\n[SHUTDOWN] ${signal} received. Saving data...`);
+    try { saveUsers(users); saveStats(stats); await bot.stopPolling(); } catch {}
     process.exit(0);
 }
 
-// ========================
-// PROCESS ERROR HANDLERS
-// ========================
-process.on("uncaughtException", (err) => {
-    console.error("[UNCAUGHT_EXCEPTION]", err.message, err.stack);
-});
-
-process.on("unhandledRejection", (reason, promise) => {
-    console.error("[UNHANDLED_REJECTION]", reason, "at:", promise);
-});
-
+process.on("uncaughtException",  (err) => console.error("[UNCAUGHT]", err.message, err.stack));
+process.on("unhandledRejection", (r)   => console.error("[REJECTION]", r));
 process.on("SIGINT",  () => shutdown("SIGINT"));
 process.on("SIGTERM", () => shutdown("SIGTERM"));
 
-console.log("[BOT] Amertak Bot is starting...");
+console.log("[BOT] Amertak Bot starting...");
