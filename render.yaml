@@ -1,6 +1,6 @@
 services:
-  - type: web
-    name: amertak-bot
-    env: node
-    buildCommand: npm install
-    startCommand: node server.js
+
+- type: web
+  name: amertak-media-bot
+  env: docker
+  plan: free
