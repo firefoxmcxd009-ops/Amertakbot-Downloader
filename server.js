@@ -704,9 +704,7 @@ ${A.pin} Pinterest  ${A.user} Facebook  🐦 Twitter/X
 • /id — មើល User ID
 • /stats — ស្ថិតិ Bot
 • /cancel — បោះបង់ Action បច្ចុប្បន្ន
-• /help — បង្ហាញជំនួយ
-• /notify [សារ] — Broadcast (Owner Only)
-• /users — ចំនួន Users (Owner Only)`,
+• /help — បង្ហាញជំនួយ`,
         {
             parse_mode  : "HTML",
             reply_markup: {
