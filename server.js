@@ -216,6 +216,18 @@ async function safeSend(chatId, text, options = {}) {
 }
 
 // ========================
+// SAFE EDIT MESSAGE
+// ========================
+async function safeEdit(chatId, messageId, text) {
+    try {
+        return await bot.editMessageText(text, {
+            chat_id: chatId,
+            message_id: messageId
+        });
+    } catch {}
+}
+
+// ========================
 // FETCH MEDIA INFO
 // ========================
 async function fetchVideo(chatId, url) {
@@ -314,18 +326,12 @@ async function sendFile(chatId, media, data) {
             const dlSize = formatBytes(downloaded);
             const totalSize = formatBytes(total);
 
-            try {
-                await bot.editMessageText(
+            await safeEdit(chatId, progressMessage.message_id,
 `⬇️ កំពុងទាញយក...
 
 [${bar}] ${percent}%
-${dlSize} / ${totalSize}`,
-                    {
-                        chat_id: chatId,
-                        message_id: progressMessage.message_id
-                    }
-                );
-            } catch {}
+${dlSize} / ${totalSize}`
+            );
         });
 
         response.data.on("end", async () => {
@@ -334,7 +340,7 @@ ${dlSize} / ${totalSize}`,
             const buffer = Buffer.concat(chunks);
             const caption = [
                 data.title || "Downloaded",
-                data.author ? `👤 ${data.author}` : "",
+                data.author   ? `👤 ${data.author}` : "",
                 data.duration ? `⏱ ${formatDuration(data.duration)}` : "",
                 data.platform ? `📱 ${data.platform}` : ""
             ].filter(Boolean).join("\n");
@@ -391,11 +397,11 @@ function buildKeyboard(data) {
     const keyboard = [];
 
     const row1 = [];
-    if (findMedia(data, "video"))  row1.push({ text: "🎬 Video",  callback_data: "video" });
-    if (findMedia(data, "audio"))  row1.push({ text: "🎵 Audio",  callback_data: "audio" });
+    if (findMedia(data, "video")) row1.push({ text: "🎬 Video", callback_data: "video" });
+    if (findMedia(data, "audio")) row1.push({ text: "🎵 Audio", callback_data: "audio" });
     if (row1.length > 0) keyboard.push(row1);
 
-    if (findMedia(data, "image"))  keyboard.push([{ text: "🖼 Image", callback_data: "image" }]);
+    if (findMedia(data, "image")) keyboard.push([{ text: "🖼 Image", callback_data: "image" }]);
 
     keyboard.push([{
         text: "🛠 Tools",
@@ -742,15 +748,32 @@ bot.on("error", (err) => {
 });
 
 // ========================
+// GRACEFUL SHUTDOWN
+// ========================
+async function shutdown(signal) {
+    console.log(`\n[SHUTDOWN] Received ${signal}. Saving data and exiting...`);
+    try {
+        saveUsers(users);
+        saveStats(stats);
+        await bot.stopPolling();
+    } catch (err) {
+        console.error("[SHUTDOWN] Error during cleanup:", err.message);
+    }
+    process.exit(0);
+}
+
+// ========================
 // PROCESS ERROR HANDLERS
 // ========================
-process.on("unhandledRejection", (reason) => {
-    console.error("[UNHANDLED_REJECTION]", reason);
-});
-
 process.on("uncaughtException", (err) => {
-    console.error("[UNCAUGHT_EXCEPTION]", err.message);
-    // do NOT exit — keep bot alive
+    console.error("[UNCAUGHT_EXCEPTION]", err.message, err.stack);
 });
 
-console.log("[BOT] Amertak Bot started successfully.");
+process.on("unhandledRejection", (reason, promise) => {
+    console.error("[UNHANDLED_REJECTION]", reason, "at:", promise);
+});
+
+process.on("SIGINT",  () => shutdown("SIGINT"));
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+
+console.log("[BOT] Amertak Bot is starting...");
