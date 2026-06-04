@@ -33,7 +33,9 @@ if (!API_BASE) {
     console.error("[FATAL] API_BASE missing");
     process.exit(1);
 }
-
+function isAdmin(req) {
+    return String(req.headers["x-admin"]) === String(OWNER_ID);
+}
 // ========================
 // SECURITY MIDDLEWARE
 // ========================
@@ -45,6 +47,123 @@ app.use((req, res, next) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Allow-Headers", "*");
     next();
+});
+// ========================
+// ADMIN DASHBOARD UI
+// ========================
+app.get("/dashboard", (req, res) => {
+
+    const html = `
+<!DOCTYPE html>
+<html>
+<head>
+<title>Amertak Dashboard</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+
+<style>
+body {
+    margin:0;
+    font-family: Arial;
+    background:#0f172a;
+    color:white;
+}
+
+.container {
+    padding:20px;
+}
+
+.card {
+    background:#1e293b;
+    padding:15px;
+    border-radius:12px;
+    margin-bottom:10px;
+}
+
+h1 {
+    color:#38bdf8;
+}
+
+button {
+    padding:10px;
+    border:none;
+    border-radius:8px;
+    background:#38bdf8;
+    color:black;
+    cursor:pointer;
+    font-weight:bold;
+}
+
+input, textarea {
+    width:100%;
+    padding:10px;
+    margin-top:5px;
+    border-radius:8px;
+    border:none;
+}
+
+.log {
+    height:150px;
+    overflow:auto;
+    background:#0b1220;
+    padding:10px;
+    border-radius:10px;
+    font-size:12px;
+}
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+<h1>🚀 Amertak Admin Dashboard</h1>
+
+<div class="card">
+<h3>📊 Stats</h3>
+<p>👤 Users: ${users.size}</p>
+<p>⬇️ Downloads: ${stats.downloads}</p>
+<p>🔗 Links: ${stats.links}</p>
+</div>
+
+<div class="card">
+<h3>📢 Broadcast Message</h3>
+
+<textarea id="msg" placeholder="Type message..."></textarea>
+<br><br>
+<button onclick="broadcast()">Send Broadcast</button>
+</div>
+
+<div class="card">
+<h3>👤 User List</h3>
+<div class="log" id="usersBox">${[...users].join("<br>")}</div>
+</div>
+
+</div>
+
+<script>
+
+async function broadcast() {
+    const msg = document.getElementById("msg").value;
+
+    const res = await fetch("/api/broadcast", {
+        method:"POST",
+        headers:{
+            "Content-Type":"application/json"
+        },
+        body: JSON.stringify({ message: msg })
+    });
+
+    const data = await res.json();
+    alert("Sent: " + data.sent);
+}
+
+</script>
+
+</body>
+</html>
+`;
+
+    res.send(html);
 });
 
 // ========================
@@ -370,6 +489,8 @@ bot.onText(/\/start/, async msg => {
 
     safeSend(msg.chat.id,
 `${A.rocket} Amertak Bot Ready
+🌐 Dashboard:
+http://localhost:${PORT}/dashboard
 
 Send any link:
 YouTube, TikTok, Instagram, etc.`);
@@ -441,6 +562,35 @@ app.get("/", (_, res) => {
 
 app.get("/health", (_, res) => {
     res.json({ alive: true });
+});
+// ========================
+// ADMIN BROADCAST API
+// ========================
+app.post("/api/broadcast", async (req, res) => {
+
+    if (String(req.headers["x-admin"]) !== String(OWNER_ID)) {
+        return res.status(403).json({ error: "forbidden" });
+    }
+
+    const message = req.body.message;
+
+    if (!message) {
+        return res.json({ error: "empty message" });
+    }
+
+    let sent = 0;
+    let failed = 0;
+
+    for (const uid of users) {
+        try {
+            await bot.sendMessage(uid, `📢 ${message}`);
+            sent++;
+        } catch {
+            failed++;
+        }
+    }
+
+    res.json({ sent, failed });
 });
 
 // ========================
