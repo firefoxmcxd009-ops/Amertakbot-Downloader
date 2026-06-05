@@ -1310,7 +1310,7 @@ app.listen(PORT, () => {
 ==========================================
  PORT      : \${PORT}
  API BASE  : \${API_BASE}
- BOT URL   : \${BOT_URL || "NOT SET"}
+ BOT URL   : \${BOT_URL}
  USERS     : \${users.size}
 ==========================================
 \`);
