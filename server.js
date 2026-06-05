@@ -1,13 +1,9 @@
 //////////////////////////////////////////////////////
-// AMERTAK TELEGRAM BOT - ULTIMATE DOWNLOAD EDITION
+// AMERTAK TELEGRAM BOT - FULL WORKING VERSION
 //////////////////////////////////////////////////////
 
 process.on("unhandledRejection", console.error);
 process.on("uncaughtException", console.error);
-
-//////////////////////////////////////////////////////
-// IMPORTS
-//////////////////////////////////////////////////////
 
 require("dotenv").config();
 
@@ -30,7 +26,7 @@ const BOT_URL  = (process.env.BOT_URL || "").replace(/\/$/, "");
 const PORT     = Number(process.env.PORT || 3000);
 
 if (!TOKEN) {
-    console.error("❌ BOT_TOKEN missing in .env");
+    console.error("❌ BOT_TOKEN missing");
     process.exit(1);
 }
 
@@ -39,8 +35,6 @@ if (!TOKEN) {
 //////////////////////////////////////////////////////
 
 const app = express();
-
-app.set("trust proxy", true);
 
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true }));
@@ -52,74 +46,103 @@ app.use(
     })
 );
 
+app.get("/", (_, res) => {
+    res.json({
+        status: "online",
+        bot: "amertak"
+    });
+});
+
+app.listen(PORT, () => {
+    console.log(`🌐 Server running on ${PORT}`);
+});
+
 //////////////////////////////////////////////////////
 // TELEGRAM BOT
 //////////////////////////////////////////////////////
 
 const bot = new TelegramBot(TOKEN, {
-    polling: {
-        autoStart: false,
-        interval: 2000,
-        params: { timeout: 10 }
+    polling: false,
+    filepath: false,
+    request: {
+        agentOptions: {
+            keepAlive: true,
+            family: 4
+        }
     }
 });
 
 //////////////////////////////////////////////////////
-// SAFE POLLING START
+// SAFE START
 //////////////////////////////////////////////////////
 
-let pollingStarted = false;
+let started = false;
 
-async function startPollingSafe() {
-    if (pollingStarted) return;
+async function startBot() {
+
+    if (started) return;
 
     try {
-        await bot.deleteWebHook().catch(() => {});
-        await bot.startPolling();
 
-        pollingStarted = true;
+        await bot.deleteWebHook({
+            drop_pending_updates: true
+        }).catch(() => {});
 
-        console.log("✅ Bot polling started");
+        try {
+            await bot.stopPolling();
+        } catch {}
+
+        await bot.startPolling({
+            restart: true,
+            polling: {
+                interval: 300,
+                autoStart: true,
+                params: {
+                    timeout: 10
+                }
+            }
+        });
+
+        started = true;
+
+        console.log("✅ BOT ONLINE");
+
     } catch (err) {
-        console.error("❌ Failed to start polling:", err.message);
 
-        setTimeout(startPollingSafe, 10000);
+        console.error(
+            "❌ BOT START ERROR:",
+            err.message
+        );
+
+        setTimeout(startBot, 10000);
     }
 }
 
-setTimeout(startPollingSafe, 4000);
-
-//////////////////////////////////////////////////////
-// PROCESS EXIT
-//////////////////////////////////////////////////////
-
-async function shutdown(signal) {
-    console.log(`\n${signal} received — shutting down...`);
-
-    try {
-        await bot.stopPolling();
-    } catch {}
-
-    process.exit(0);
-}
-
-process.on("SIGTERM", () => shutdown("SIGTERM"));
-process.on("SIGINT",  () => shutdown("SIGINT"));
+setTimeout(startBot, 2000);
 
 //////////////////////////////////////////////////////
 // POLLING ERRORS
 //////////////////////////////////////////////////////
 
-bot.on("polling_error", (err) => {
-    if (
-        err.code === "ETELEGRAM" &&
-        String(err.message).includes("409")
-    ) {
-        console.warn("⚠️ 409 Conflict detected");
-        return;
-    }
+bot.on("polling_error", async (err) => {
 
-    console.error("Polling error:", err.message);
+    const msg = String(err.message || "");
+
+    console.error("Polling error:", msg);
+
+    if (
+        msg.includes("409") ||
+        msg.includes("terminated by other getUpdates")
+    ) {
+
+        try {
+            await bot.stopPolling();
+        } catch {}
+
+        started = false;
+
+        return setTimeout(startBot, 5000);
+    }
 });
 
 //////////////////////////////////////////////////////
@@ -129,21 +152,13 @@ bot.on("polling_error", (err) => {
 const DB_FILE      = path.join(__dirname, "users.json");
 const HISTORY_FILE = path.join(__dirname, "history.json");
 
-function ensureDB() {
-    try {
-        if (!fs.existsSync(DB_FILE)) {
-            fs.writeFileSync(DB_FILE, "[]");
-        }
-
-        if (!fs.existsSync(HISTORY_FILE)) {
-            fs.writeFileSync(HISTORY_FILE, "{}");
-        }
-    } catch (err) {
-        console.error("ensureDB error:", err.message);
-    }
+if (!fs.existsSync(DB_FILE)) {
+    fs.writeFileSync(DB_FILE, "[]");
 }
 
-ensureDB();
+if (!fs.existsSync(HISTORY_FILE)) {
+    fs.writeFileSync(HISTORY_FILE, "{}");
+}
 
 function loadUsers() {
     try {
@@ -156,68 +171,23 @@ function loadUsers() {
 }
 
 function saveUsers(usersSet) {
-    try {
-        fs.writeFileSync(
-            DB_FILE,
-            JSON.stringify([...usersSet], null, 2)
-        );
-    } catch (err) {
-        console.error("saveUsers error:", err.message);
-    }
+    fs.writeFileSync(
+        DB_FILE,
+        JSON.stringify([...usersSet], null, 2)
+    );
 }
 
 const users = loadUsers();
 
 function addUser(id) {
+
     id = String(id);
 
     if (!users.has(id)) {
+
         users.add(id);
+
         saveUsers(users);
-    }
-}
-
-function loadHistory(userId) {
-    try {
-        const all = JSON.parse(
-            fs.readFileSync(HISTORY_FILE, "utf8")
-        );
-
-        return all[String(userId)] || [];
-    } catch {
-        return [];
-    }
-}
-
-function saveHistory(userId, entry) {
-    try {
-        let all = {};
-
-        try {
-            all = JSON.parse(
-                fs.readFileSync(HISTORY_FILE, "utf8")
-            );
-        } catch {}
-
-        const key = String(userId);
-
-        if (!all[key]) {
-            all[key] = [];
-        }
-
-        all[key].unshift(entry);
-
-        if (all[key].length > 200) {
-            all[key] = all[key].slice(0, 200);
-        }
-
-        fs.writeFileSync(
-            HISTORY_FILE,
-            JSON.stringify(all, null, 2)
-        );
-
-    } catch (err) {
-        console.error("saveHistory error:", err.message);
     }
 }
 
@@ -225,15 +195,15 @@ function saveHistory(userId, entry) {
 // STATES
 //////////////////////////////////////////////////////
 
-const userStates   = new Map();
-const replyStates  = new Map();
 const formatStates = new Map();
+const userStates   = new Map();
 
 //////////////////////////////////////////////////////
 // HELPERS
 //////////////////////////////////////////////////////
 
 function isURL(text = "") {
+
     return (
         text.startsWith("http://") ||
         text.startsWith("https://")
@@ -241,6 +211,7 @@ function isURL(text = "") {
 }
 
 function detectPlatform(url = "") {
+
     url = url.toLowerCase();
 
     if (
@@ -264,6 +235,7 @@ function detectPlatform(url = "") {
 }
 
 function platformEndpoint(platform) {
+
     const map = {
         youtube: "/api/youtube",
         spotify: "/api/spotify",
@@ -275,73 +247,50 @@ function platformEndpoint(platform) {
 }
 
 function safeFilename(title = "download") {
+
     return (
         "Amertak_" +
         title
-            .replace(/[^\w\s\u1780-\u17FF.-]/g, "_")
+            .replace(/[^\w\s.-]/g, "_")
             .replace(/\s+/g, "_")
-            .trim()
             .substring(0, 80)
     );
 }
 
 function formatsFor(platform) {
+
     switch (platform) {
+
         case "youtube":
             return [
-                { label: "ប្រូស", value: "mp4_1080", type: "video" },
-                { label: "លឿន", value: "mp4_720", type: "video" },
-                { label: "MP3", value: "mp3_320", type: "audio" }
+                { label: "HD",  value: "mp4_1080", type: "video" },
+                { label: "SD",  value: "mp4_720",  type: "video" },
+                { label: "MP3", value: "mp3_320",  type: "audio" }
             ];
 
         case "tiktok":
             return [
-                { label: "ប្រូស", value: "mp4_hd", type: "video" },
-                { label: "លឿន", value: "mp4_sd", type: "video" },
-                { label: "MP3", value: "mp3", type: "audio" }
+                { label: "HD",  value: "mp4_hd", type: "video" },
+                { label: "SD",  value: "mp4_sd", type: "video" },
+                { label: "MP3", value: "mp3",    type: "audio" }
             ];
 
         case "spotify":
             return [
-                { label: "MP3", value: "mp3_320", type: "audio" },
-                { label: "FLAC", value: "flac", type: "audio" }
+                { label: "MP3", value: "mp3_320", type: "audio" }
             ];
 
         case "pinterest":
             return [
-                { label: "ប្រូស", value: "mp4_hd", type: "video" },
-                { label: "លឿន", value: "mp4_sd", type: "video" },
-                { label: "រូបភាព", value: "jpeg", type: "image" }
+                { label: "HD", value: "mp4_hd", type: "video" },
+                { label: "SD", value: "mp4_sd", type: "video" }
             ];
 
         default:
             return [
-                { label: "MP4", value: "mp4", type: "video" },
-                { label: "MP3", value: "mp3", type: "audio" }
+                { label: "MP4", value: "mp4", type: "video" }
             ];
     }
-}
-
-function buttonLabel(fmt) {
-    const styles = {
-        mp4_1080: "🟣 ប្រូស",
-        mp4_720:  "🟢 លឿន",
-        mp4_hd:   "🟣 ប្រូស",
-        mp4_sd:   "🟢 លឿន",
-        mp3_320:  "🔴 MP3",
-        mp3:      "🔴 MP3",
-        flac:     "🔵 FLAC",
-        jpeg:     "🟡 រូបភាព"
-    };
-
-    return styles[fmt.value] || `▪ ${fmt.label}`;
-}
-
-function escapeHTML(text = "") {
-    return String(text)
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;");
 }
 
 //////////////////////////////////////////////////////
@@ -352,79 +301,37 @@ async function fetchMetadata(chatId, url) {
 
     const loading = await bot.sendMessage(
         chatId,
-`//////////////////////////////////////////
-0%
-
-🔎 កំពុងស្វែងរក...`
+        "🔎 Loading..."
     );
 
     try {
 
         const platform = detectPlatform(url);
-        const endpoint = platformEndpoint(platform);
-
-        await bot.editMessageText(
-`//////////////////////////////////////////
-25%
-
-🌐 Connecting API...`,
-            {
-                chat_id: chatId,
-                message_id: loading.message_id
-            }
-        );
 
         const response = await axios.get(
-            `${API_BASE}${endpoint}`,
+            `${API_BASE}${platformEndpoint(platform)}`,
             {
                 params: { url },
                 timeout: 120000
             }
         );
 
-        await bot.editMessageText(
-`//////////////////////////////////////////
-70%
-
-📦 Receiving data...`,
-            {
-                chat_id: chatId,
-                message_id: loading.message_id
-            }
-        );
-
-        await new Promise((r) => setTimeout(r, 500));
-
-        await bot.editMessageText(
-`//////////////////////////////////////////
-100%
-
-✅ Completed`,
-            {
-                chat_id: chatId,
-                message_id: loading.message_id
-            }
-        );
-
-        setTimeout(() => {
-            bot.deleteMessage(chatId, loading.message_id)
-                .catch(() => {});
-        }, 1200);
+        await bot.deleteMessage(
+            chatId,
+            loading.message_id
+        ).catch(() => {});
 
         return response.data;
 
     } catch (err) {
 
         console.error(
-            "fetchMetadata error:",
-            err.response?.data || err.message
+            "Metadata error:",
+            err.message
         );
 
         await bot.editMessageText(
-`//////////////////////////////////////////
-0%
-
-❌ Error: ${err.message}`,
+            "❌ Failed",
             {
                 chat_id: chatId,
                 message_id: loading.message_id
@@ -436,7 +343,7 @@ async function fetchMetadata(chatId, url) {
 }
 
 //////////////////////////////////////////////////////
-// DOWNLOAD + SEND FILE
+// DOWNLOAD + SEND
 //////////////////////////////////////////////////////
 
 async function downloadAndSend(
@@ -446,31 +353,24 @@ async function downloadAndSend(
     formatObj
 ) {
 
-    const platform  = detectPlatform(url);
-    const title     = data.title || "download";
-    const filename  = safeFilename(title);
-    const mediaType = formatObj.type;
-
-    const prog = await bot.sendMessage(
+    const progress = await bot.sendMessage(
         chatId,
-`//////////////////////////////////////////
-0%
-
-⬇️ កំពុង Download...`
+        "⬇️ Downloading..."
     );
 
     try {
+
+        const platform = detectPlatform(url);
 
         const dlRes = await axios.get(
             `${API_BASE}/api/download`,
             {
                 params: {
                     url,
-                    format: formatObj.value,
-                    platform
+                    platform,
+                    format: formatObj.value
                 },
-                timeout: 60000,
-                maxRedirects: 5
+                timeout: 120000
             }
         );
 
@@ -479,51 +379,47 @@ async function downloadAndSend(
             dlRes.data?.url;
 
         if (!directUrl) {
-            throw new Error("No download URL from API");
+            throw new Error("No URL");
         }
 
         await bot.editMessageText(
-`//////////////////////////////////////////
-40%
-
-📦 Downloading file...`,
+            "📦 Fetching file...",
             {
                 chat_id: chatId,
-                message_id: prog.message_id
+                message_id: progress.message_id
             }
         ).catch(() => {});
 
-        const fileRes = await axios.get(
+        const file = await axios.get(
             directUrl,
             {
                 responseType: "arraybuffer",
-                timeout: 180000,
+                timeout: 300000,
                 headers: {
                     "User-Agent": "Mozilla/5.0"
-                },
-                maxContentLength: Infinity,
-                maxBodyLength: Infinity
+                }
             }
         );
 
-        const buffer = Buffer.from(fileRes.data);
+        const buffer = Buffer.from(file.data);
 
         await bot.editMessageText(
-`//////////////////////////////////////////
-85%
-
-📤 Sending to Telegram...`,
+            "📤 Sending...",
             {
                 chat_id: chatId,
-                message_id: prog.message_id
+                message_id: progress.message_id
             }
         ).catch(() => {});
 
-        if (mediaType === "audio") {
+        const filename = safeFilename(
+            data.title || "download"
+        );
 
-            const ext = formatObj.value.includes("flac")
-                ? ".flac"
-                : ".mp3";
+        //////////////////////////////////////////////////////
+        // AUDIO
+        //////////////////////////////////////////////////////
+
+        if (formatObj.type === "audio") {
 
             await bot.sendAudio(
                 chatId,
@@ -533,26 +429,17 @@ async function downloadAndSend(
                     performer: "Amertak"
                 },
                 {
-                    filename: filename + ext,
-                    contentType: formatObj.value.includes("flac")
-                        ? "audio/flac"
-                        : "audio/mpeg"
+                    filename: filename + ".mp3",
+                    contentType: "audio/mpeg"
                 }
             );
+        }
 
-        } else if (mediaType === "image") {
+        //////////////////////////////////////////////////////
+        // VIDEO
+        //////////////////////////////////////////////////////
 
-            await bot.sendDocument(
-                chatId,
-                buffer,
-                {},
-                {
-                    filename: filename + ".jpg",
-                    contentType: "image/jpeg"
-                }
-            );
-
-        } else {
+        else {
 
             await bot.sendVideo(
                 chatId,
@@ -569,101 +456,54 @@ async function downloadAndSend(
 
         await bot.deleteMessage(
             chatId,
-            prog.message_id
+            progress.message_id
         ).catch(() => {});
-
-        saveHistory(chatId, {
-            title,
-            url: data.url || url,
-            thumbnail: data.thumbnail || null,
-            platform: data.source || platform || "unknown",
-            format: formatObj.value,
-            duration: data.extra?.duration || null,
-            timestamp: Date.now()
-        });
 
         await bot.sendMessage(
             chatId,
-`✅ ${title}
-
-📦 ${formatObj.value.toUpperCase()}`,
-            {
-                reply_markup: {
-                    inline_keyboard: [[
-                        {
-                            text: "📊 Dashboard",
-                            web_app: {
-                                url: `${BOT_URL}/dashboard/${chatId}`
-                            }
-                        }
-                    ]]
-                }
-            }
+            `✅ ${data.title || "Completed"}`
         );
 
     } catch (err) {
 
         console.error(
-            "downloadAndSend error:",
-            err.response?.data || err.message
+            "Download error:",
+            err.message
         );
 
         await bot.editMessageText(
-`//////////////////////////////////////////
-0%
-
-❌ Download failed`,
+            "❌ Download failed",
             {
                 chat_id: chatId,
-                message_id: prog.message_id
+                message_id: progress.message_id
             }
         ).catch(() => {});
-
-        await bot.sendMessage(
-            chatId,
-`⚠️ មិនអាច download បានដោយផ្ទាល់
-
-សូមប្រើ link ខាងក្រោម:`,
-            {
-                reply_markup: {
-                    inline_keyboard: [[
-                        {
-                            text: "⬇️ Download Link",
-                            url: data.url || url
-                        }
-                    ]]
-                }
-            }
-        );
     }
 }
 
 //////////////////////////////////////////////////////
-// START COMMAND
+// START
 //////////////////////////////////////////////////////
 
 bot.onText(/^\/start$/, async (msg) => {
 
-    const chatId = msg.chat.id;
-
-    addUser(chatId);
+    addUser(msg.chat.id);
 
     await bot.sendMessage(
-        chatId,
+        msg.chat.id,
 `🔥 AMERTAK DOWNLOADER
 
-គាំទ្រ:
-• YouTube
-• TikTok
-• Spotify
-• Pinterest
+✅ YouTube
+✅ TikTok
+✅ Spotify
+✅ Pinterest
 
-📥 ផ្ញើ link មកដើម្បី download`
+📥 Send URL`
     );
 });
 
 //////////////////////////////////////////////////////
-// HELP COMMAND
+// HELP
 //////////////////////////////////////////////////////
 
 bot.onText(/^\/help$/, async (msg) => {
@@ -672,48 +512,14 @@ bot.onText(/^\/help$/, async (msg) => {
         msg.chat.id,
 `📚 Commands
 
-/start - Start bot
-/help - Show help
-/stats - Bot statistics
-/dashboard - Open dashboard`
+/start
+/help
+/stats`
     );
 });
 
 //////////////////////////////////////////////////////
-// DASHBOARD COMMAND
-//////////////////////////////////////////////////////
-
-bot.onText(/^\/dashboard$/, async (msg) => {
-
-    const chatId = msg.chat.id;
-
-    if (!BOT_URL) {
-        return bot.sendMessage(
-            chatId,
-            "❌ BOT_URL missing in .env"
-        );
-    }
-
-    return bot.sendMessage(
-        chatId,
-        "📊 Open your dashboard",
-        {
-            reply_markup: {
-                inline_keyboard: [[
-                    {
-                        text: "📊 Dashboard",
-                        web_app: {
-                            url: `${BOT_URL}/dashboard/${chatId}`
-                        }
-                    }
-                ]]
-            }
-        }
-    );
-});
-
-//////////////////////////////////////////////////////
-// STATS COMMAND
+// STATS
 //////////////////////////////////////////////////////
 
 bot.onText(/^\/stats$/, async (msg) => {
@@ -722,19 +528,17 @@ bot.onText(/^\/stats$/, async (msg) => {
         return;
     }
 
-    const totalUsers = users.size;
-
     await bot.sendMessage(
         msg.chat.id,
 `📊 BOT STATS
 
-👤 Users: ${totalUsers}
-🟢 Status: Online`
+👤 Users: ${users.size}
+🟢 Online`
     );
 });
 
 //////////////////////////////////////////////////////
-// URL HANDLER
+// MESSAGE HANDLER
 //////////////////////////////////////////////////////
 
 bot.on("message", async (msg) => {
@@ -749,29 +553,35 @@ bot.on("message", async (msg) => {
         }
 
         if (!isURL(text)) {
+
             return bot.sendMessage(
                 chatId,
-                "❌ សូមផ្ញើ URL ត្រឹមត្រូវ"
+                "❌ Invalid URL"
+            );
+        }
+
+        const platform = detectPlatform(text);
+
+        if (!platform) {
+
+            return bot.sendMessage(
+                chatId,
+                "❌ Unsupported platform"
             );
         }
 
         addUser(chatId);
 
-        const platform = detectPlatform(text);
-
-        if (!platform) {
-            return bot.sendMessage(
-                chatId,
-                "❌ Platform មិនគាំទ្រ"
-            );
-        }
-
-        const data = await fetchMetadata(chatId, text);
+        const data = await fetchMetadata(
+            chatId,
+            text
+        );
 
         if (!data) {
+
             return bot.sendMessage(
                 chatId,
-                "❌ មិនអាចទាញព័ត៌មានបាន"
+                "❌ Cannot fetch metadata"
             );
         }
 
@@ -783,29 +593,22 @@ bot.on("message", async (msg) => {
             formats
         });
 
-        const keyboard = formats.map((fmt, i) => ([
-            {
-                text: buttonLabel(fmt),
-                callback_data: `fmt_${i}`
-            }
-        ]));
+        const keyboard = formats.map((fmt, i) => ([{
+            text:
+                fmt.type === "audio"
+                    ? "🎵 MP3"
+                    : fmt.value.includes("1080") ||
+                      fmt.value.includes("hd")
+                    ? "🎬 HD"
+                    : "📹 SD",
 
-        if (BOT_URL) {
-            keyboard.push([
-                {
-                    text: "📊 Dashboard",
-                    web_app: {
-                        url: `${BOT_URL}/dashboard/${chatId}`
-                    }
-                }
-            ]);
-        }
+            callback_data: `fmt_${i}`
+        }]));
 
         const caption =
-`🎬 ${escapeHTML(data.title || "Unknown")}
+`🎬 ${data.title || "Unknown"}
 
-🌐 Platform: ${platform}
-📦 Formats available: ${formats.length}`;
+🌐 ${platform.toUpperCase()}`;
 
         if (data.thumbnail) {
 
@@ -814,7 +617,6 @@ bot.on("message", async (msg) => {
                 data.thumbnail,
                 {
                     caption,
-                    parse_mode: "HTML",
                     reply_markup: {
                         inline_keyboard: keyboard
                     }
@@ -827,7 +629,6 @@ bot.on("message", async (msg) => {
                 chatId,
                 caption,
                 {
-                    parse_mode: "HTML",
                     reply_markup: {
                         inline_keyboard: keyboard
                     }
@@ -838,14 +639,9 @@ bot.on("message", async (msg) => {
     } catch (err) {
 
         console.error(
-            "Message handler error:",
+            "Message error:",
             err.message
         );
-
-        bot.sendMessage(
-            msg.chat.id,
-            "❌ Error processing request"
-        ).catch(() => {});
     }
 });
 
@@ -857,16 +653,13 @@ bot.on("callback_query", async (query) => {
 
     try {
 
-        const chatId = query.message.chat.id;
-        const data   = query.data;
+        const chatId    = query.message.chat.id;
+        const messageId = query.message.message_id;
+        const data      = query.data;
 
         if (!data.startsWith("fmt_")) {
             return;
         }
-
-        const index = Number(
-            data.replace("fmt_", "")
-        );
 
         const state = formatStates.get(chatId);
 
@@ -875,29 +668,78 @@ bot.on("callback_query", async (query) => {
             return bot.answerCallbackQuery(
                 query.id,
                 {
-                    text: "❌ Session expired"
+                    text: "Expired"
                 }
             );
         }
+
+        const index = Number(
+            data.replace("fmt_", "")
+        );
 
         const formatObj = state.formats[index];
 
         if (!formatObj) {
+            return;
+        }
+
+        //////////////////////////////////////////////////////
+        // LOCK
+        //////////////////////////////////////////////////////
+
+        if (userStates.get(chatId)) {
 
             return bot.answerCallbackQuery(
                 query.id,
                 {
-                    text: "❌ Invalid format"
+                    text: "⏳ Processing..."
                 }
             );
         }
+
+        userStates.set(chatId, true);
+
+        //////////////////////////////////////////////////////
+        // REMOVE BUTTONS
+        //////////////////////////////////////////////////////
+
+        await bot.editMessageReplyMarkup(
+            {
+                inline_keyboard: []
+            },
+            {
+                chat_id: chatId,
+                message_id: messageId
+            }
+        ).catch(() => {});
+
+        //////////////////////////////////////////////////////
+        // ANSWER
+        //////////////////////////////////////////////////////
 
         await bot.answerCallbackQuery(
             query.id,
             {
                 text: `⬇️ ${formatObj.label}`
             }
-        );
+        ).catch(() => {});
+
+        //////////////////////////////////////////////////////
+        // DELETE PREVIEW
+        //////////////////////////////////////////////////////
+
+        setTimeout(() => {
+
+            bot.deleteMessage(
+                chatId,
+                messageId
+            ).catch(() => {});
+
+        }, 500);
+
+        //////////////////////////////////////////////////////
+        // DOWNLOAD
+        //////////////////////////////////////////////////////
 
         await downloadAndSend(
             chatId,
@@ -906,412 +748,47 @@ bot.on("callback_query", async (query) => {
             formatObj
         );
 
+        //////////////////////////////////////////////////////
+        // CLEANUP
+        //////////////////////////////////////////////////////
+
+        userStates.delete(chatId);
+        formatStates.delete(chatId);
+
     } catch (err) {
 
         console.error(
-            "callback_query error:",
+            "Callback error:",
             err.message
         );
 
-        bot.answerCallbackQuery(
-            query.id,
-            {
-                text: "❌ Error"
-            }
-        ).catch(() => {});
-    }
-});
-
-//////////////////////////////////////////////////////
-// HEALTH
-//////////////////////////////////////////////////////
-
-app.get("/", (_, res) => {
-
-    res.json({
-        status: true,
-        bot: "running",
-        version: "ultimate-download-edition",
-        users: users.size,
-        uptime: process.uptime()
-    });
-});
-
-//////////////////////////////////////////////////////
-// DASHBOARD ROUTE
-//////////////////////////////////////////////////////
-
-app.get("/dashboard/:userId", (req, res) => {
-
-    const userId = req.params.userId;
-
-    const history = loadHistory(userId);
-
-    const historyJSON = JSON.stringify(history);
-
-    res.send(`
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-<title>Dashboard — Amertak</title>
-
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet"/>
-
-<style>
-:root{
-    --bg:#080b10;
-    --surface:#0d1117;
-    --border:#1c2333;
-    --accent:#00e5ff;
-    --accent2:#7c3aed;
-    --text:#e6edf3;
-    --muted:#8b949e;
-    --success:#3fb950;
-    --card:#161b22;
-    --glass:rgba(255,255,255,0.03);
-}
-
-*{
-    margin:0;
-    padding:0;
-    box-sizing:border-box;
-}
-
-body{
-    background:var(--bg);
-    color:var(--text);
-    font-family:'DM Mono',monospace;
-    min-height:100vh;
-    overflow-x:hidden;
-}
-
-.wrap{
-    max-width:1200px;
-    margin:auto;
-    padding:30px 20px 100px;
-}
-
-header{
-    display:flex;
-    align-items:center;
-    justify-content:space-between;
-    margin-bottom:40px;
-    gap:20px;
-    flex-wrap:wrap;
-}
-
-.logo{
-    font-size:28px;
-    font-weight:800;
-    font-family:'Syne',sans-serif;
-}
-
-.logo span{
-    color:var(--accent);
-}
-
-.uid{
-    color:var(--muted);
-    font-size:13px;
-}
-
-.stats{
-    display:grid;
-    grid-template-columns:repeat(auto-fit,minmax(180px,1fr));
-    gap:15px;
-    margin-bottom:35px;
-}
-
-.card{
-    background:var(--card);
-    border:1px solid var(--border);
-    border-radius:14px;
-    padding:20px;
-}
-
-.card .label{
-    color:var(--muted);
-    font-size:12px;
-    margin-bottom:10px;
-}
-
-.card .value{
-    font-size:30px;
-    font-weight:800;
-}
-
-.filter{
-    display:flex;
-    gap:10px;
-    margin-bottom:25px;
-    flex-wrap:wrap;
-}
-
-.filter button{
-    border:none;
-    background:#161b22;
-    color:#fff;
-    border:1px solid var(--border);
-    padding:10px 16px;
-    border-radius:999px;
-    cursor:pointer;
-}
-
-.filter button.active{
-    background:var(--accent);
-    color:#000;
-    font-weight:700;
-}
-
-.grid{
-    display:grid;
-    grid-template-columns:repeat(auto-fill,minmax(300px,1fr));
-    gap:20px;
-}
-
-.item{
-    background:var(--card);
-    border:1px solid var(--border);
-    border-radius:16px;
-    overflow:hidden;
-}
-
-.item img{
-    width:100%;
-    aspect-ratio:16/9;
-    object-fit:cover;
-    display:block;
-}
-
-.item-body{
-    padding:16px;
-}
-
-.item-title{
-    font-weight:700;
-    margin-bottom:10px;
-}
-
-.meta{
-    color:var(--muted);
-    font-size:12px;
-    margin-bottom:14px;
-}
-
-.btn{
-    width:100%;
-    border:none;
-    background:var(--accent);
-    color:#000;
-    padding:12px;
-    border-radius:10px;
-    font-weight:700;
-    cursor:pointer;
-    text-decoration:none;
-    display:inline-flex;
-    justify-content:center;
-}
-
-.empty{
-    text-align:center;
-    color:var(--muted);
-    padding:60px 20px;
-}
-</style>
-</head>
-
-<body>
-
-<div class="wrap">
-
-<header>
-    <div>
-        <div class="logo">
-            AMERT<span>AK</span>
-        </div>
-
-        <div class="uid">
-            USER ID: ${userId}
-        </div>
-    </div>
-
-    <div>
-        <span style="color:#3fb950">●</span>
-        ONLINE
-    </div>
-</header>
-
-<div class="stats">
-    <div class="card">
-        <div class="label">TOTAL DOWNLOADS</div>
-        <div class="value" id="total">0</div>
-    </div>
-
-    <div class="card">
-        <div class="label">YOUTUBE</div>
-        <div class="value" id="yt">0</div>
-    </div>
-
-    <div class="card">
-        <div class="label">TIKTOK</div>
-        <div class="value" id="tt">0</div>
-    </div>
-
-    <div class="card">
-        <div class="label">SPOTIFY</div>
-        <div class="value" id="sp">0</div>
-    </div>
-
-    <div class="card">
-        <div class="label">PINTEREST</div>
-        <div class="value" id="pi">0</div>
-    </div>
-</div>
-
-<div class="filter">
-    <button class="active" data-filter="all">
-        ALL
-    </button>
-
-    <button data-filter="youtube">
-        YOUTUBE
-    </button>
-
-    <button data-filter="tiktok">
-        TIKTOK
-    </button>
-
-    <button data-filter="spotify">
-        SPOTIFY
-    </button>
-
-    <button data-filter="pinterest">
-        PINTEREST
-    </button>
-</div>
-
-<div class="grid" id="grid"></div>
-
-</div>
-
-<script>
-
-const history = ${historyJSON};
-
-const grid = document.getElementById("grid");
-
-const stats = {
-    total: history.length,
-    yt: history.filter(x => x.platform === "youtube").length,
-    tt: history.filter(x => x.platform === "tiktok").length,
-    sp: history.filter(x => x.platform === "spotify").length,
-    pi: history.filter(x => x.platform === "pinterest").length
-};
-
-document.getElementById("total").innerText = stats.total;
-document.getElementById("yt").innerText    = stats.yt;
-document.getElementById("tt").innerText    = stats.tt;
-document.getElementById("sp").innerText    = stats.sp;
-document.getElementById("pi").innerText    = stats.pi;
-
-function render(filter = "all") {
-
-    grid.innerHTML = "";
-
-    let items = history;
-
-    if (filter !== "all") {
-        items = items.filter(
-            x => x.platform === filter
+        userStates.delete(
+            query.message.chat.id
         );
     }
+});
 
-    if (!items.length) {
+//////////////////////////////////////////////////////
+// EXIT
+//////////////////////////////////////////////////////
 
-        grid.innerHTML =
-        '<div class="empty">No downloads found</div>';
+async function shutdown(signal) {
 
-        return;
-    }
+    console.log(`${signal} received`);
 
-    items.forEach(item => {
+    try {
+        await bot.stopPolling();
+    } catch {}
 
-        const el = document.createElement("div");
-
-        el.className = "item";
-
-        el.innerHTML = \`
-            \${item.thumbnail
-                ? \`<img src="\${item.thumbnail}" alt="">\`
-                : ""
-            }
-
-            <div class="item-body">
-
-                <div class="item-title">
-                    \${item.title || "Unknown"}
-                </div>
-
-                <div class="meta">
-                    \${item.platform} •
-                    \${item.format || "unknown"}
-                </div>
-
-                <a
-                    class="btn"
-                    href="\${item.url}"
-                    target="_blank"
-                >
-                    OPEN
-                </a>
-
-            </div>
-        \`;
-
-        grid.appendChild(el);
-    });
+    process.exit(0);
 }
 
-render();
+process.once(
+    "SIGINT",
+    () => shutdown("SIGINT")
+);
 
-document
-.querySelectorAll(".filter button")
-.forEach(btn => {
-
-    btn.onclick = () => {
-
-        document
-        .querySelectorAll(".filter button")
-        .forEach(b => b.classList.remove("active"));
-
-        btn.classList.add("active");
-
-        render(btn.dataset.filter);
-    };
-});
-
-</script>
-
-</body>
-</html>
-`);
-});
-
-//////////////////////////////////////////////////////
-// START EXPRESS
-//////////////////////////////////////////////////////
-
-app.listen(PORT, () => {
-    console.log(\`
-==========================================
- AMERTAK BOT RUNNING
-==========================================
- PORT      : \${PORT}
- API BASE  : \${API_BASE}
- BOT URL   : \${BOT_URL}
- USERS     : \${users.size}
-==========================================
-\`);
-});
+process.once(
+    "SIGTERM",
+    () => shutdown("SIGTERM")
+);
