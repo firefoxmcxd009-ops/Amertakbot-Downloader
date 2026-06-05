@@ -7,6 +7,20 @@
 process.on("unhandledRejection", console.error);
 process.on("uncaughtException", console.error);
 
+// Graceful shutdown — stop polling before process exits
+// This prevents 409 Conflict when Render restarts/redeploys
+process.on("SIGTERM", async () => {
+    console.log("SIGTERM received — stopping bot polling...");
+    try { await bot.stopPolling(); } catch {}
+    process.exit(0);
+});
+
+process.on("SIGINT", async () => {
+    console.log("SIGINT received — stopping bot polling...");
+    try { await bot.stopPolling(); } catch {}
+    process.exit(0);
+});
+
 //////////////////////////////////////////////////////
 // IMPORTS
 //////////////////////////////////////////////////////
@@ -34,7 +48,27 @@ const PORT = process.env.PORT || 3000;
 //////////////////////////////////////////////////////
 
 const bot = new TelegramBot(TOKEN, {
-    polling: true
+    polling: {
+        interval: 2000,          // poll every 2s
+        autoStart: false,        // start manually after delay
+        params: { timeout: 10 }
+    }
+});
+
+// Delay start by 5s so old Render instance has time to shut down
+// before this instance starts polling — prevents 409 Conflict
+setTimeout(() => {
+    bot.startPolling();
+    console.log("✅ Bot polling started");
+}, 5000);
+
+// Suppress 409 polling errors — they resolve on their own after old instance dies
+bot.on("polling_error", (err) => {
+    if (err.code === "ETELEGRAM" && err.message.includes("409")) {
+        console.warn("⚠️  409 Conflict — waiting for old instance to stop...");
+        return;
+    }
+    console.error("Polling error:", err.message);
 });
 
 const app = express();
@@ -750,4 +784,448 @@ function formatsFor(platform) {
     }
 }
 
-/////////////////////////////////////////////////////
+//////////////////////////////////////////////////////
+// API FETCHER
+//////////////////////////////////////////////////////
+
+async function fetchMetadata(chatId, url) {
+
+    const loading = await bot.sendMessage(chatId,
+`//////////////////////////////////////////
+0%
+
+🔎 កំពុងស្វែងរក...`);
+
+    try {
+
+        const platform = detectPlatform(url);
+        const endpoint = platformEndpoint(platform);
+
+        await bot.editMessageText(
+`//////////////////////////////////////////
+25%
+
+🌐 Connecting API...`,
+            { chat_id: chatId, message_id: loading.message_id }
+        );
+
+        const response = await axios.get(`${API_BASE}${endpoint}`, {
+            params: { url },
+            timeout: 120000
+        });
+
+        await bot.editMessageText(
+`//////////////////////////////////////////
+70%
+
+📦 Receiving data...`,
+            { chat_id: chatId, message_id: loading.message_id }
+        );
+
+        await new Promise(r => setTimeout(r, 500));
+
+        await bot.editMessageText(
+`//////////////////////////////////////////
+100%
+
+✅ Completed`,
+            { chat_id: chatId, message_id: loading.message_id }
+        );
+
+        setTimeout(() => {
+            bot.deleteMessage(chatId, loading.message_id).catch(() => {});
+        }, 1000);
+
+        return response.data;
+
+    } catch (err) {
+
+        console.error(err.message);
+
+        await bot.editMessageText(
+`//////////////////////////////////////////
+0%
+
+❌ Error fetching metadata`,
+            { chat_id: chatId, message_id: loading.message_id }
+        ).catch(() => {});
+
+        return null;
+    }
+}
+
+//////////////////////////////////////////////////////
+// START
+//////////////////////////////////////////////////////
+
+bot.onText(/\/start/, async (msg) => {
+
+    addUser(msg.chat.id);
+
+    const fullName = `${msg.from.first_name || ""} ${msg.from.last_name || ""}`.trim();
+
+    await bot.sendMessage(msg.chat.id,
+`👋 សូមស្វាគមន៍ ${fullName}
+
+🔥 Supported:
+• YouTube
+• TikTok
+• Pinterest
+• Spotify
+
+📌 Usage:
+1. Send URL
+2. Choose format
+3. Download
+
+Commands:
+/id
+/ask
+/notify
+
+🚀 Ultimate Metadata Edition`,
+        {
+            reply_markup: {
+                inline_keyboard: [
+                    [
+                        {
+                            text: "🛠 Tools",
+                            web_app: { url: "https://tools-amertak.vercel.app" }
+                        },
+                        {
+                            text: "📊 Dashboard",
+                            web_app: { url: `${API_BASE}/dashboard/${msg.from.id}` }
+                        }
+                    ]
+                ]
+            }
+        }
+    );
+});
+
+//////////////////////////////////////////////////////
+// ID
+//////////////////////////////////////////////////////
+
+bot.onText(/\/id/, async (msg) => {
+    await bot.sendMessage(msg.chat.id,
+`🆔 USER INFO
+
+User ID:
+${msg.from.id}
+
+Chat ID:
+${msg.chat.id}
+
+Username:
+@${msg.from.username || "none"}`
+    );
+});
+
+//////////////////////////////////////////////////////
+// ASK
+//////////////////////////////////////////////////////
+
+bot.onText(/\/ask (.+)/, async (msg, match) => {
+
+    await bot.sendMessage(msg.chat.id, "📩 Sent to owner");
+
+    await bot.sendMessage(OWNER_ID,
+`❓ NEW QUESTION
+
+👤 User:
+${msg.from.first_name}
+
+🆔 ID:
+${msg.from.id}
+
+💬 Message:
+${match[1]}`,
+        {
+            reply_markup: {
+                inline_keyboard: [[
+                    { text: "Reply", callback_data: `reply_${msg.from.id}` }
+                ]]
+            }
+        }
+    );
+});
+
+//////////////////////////////////////////////////////
+// REPLY
+//////////////////////////////////////////////////////
+
+bot.onText(/\/reply (\d+) (.+)/, async (msg, match) => {
+
+    if (String(msg.chat.id) !== OWNER_ID) return;
+
+    try {
+        await bot.sendMessage(match[1], `📩 OWNER REPLY\n\n${match[2]}`);
+        await bot.sendMessage(msg.chat.id, "✅ Reply sent");
+    } catch {
+        await bot.sendMessage(msg.chat.id, "❌ Failed");
+    }
+});
+
+//////////////////////////////////////////////////////
+// NOTIFY
+//////////////////////////////////////////////////////
+
+bot.onText(/\/notify (.+)/, async (msg, match) => {
+
+    if (String(msg.chat.id) !== OWNER_ID) return;
+
+    let success = 0, failed = 0;
+
+    for (const id of users) {
+        try {
+            await bot.sendMessage(id, `📢 BROADCAST\n\n${match[1]}`);
+            success++;
+        } catch {
+            failed++;
+        }
+        await new Promise(r => setTimeout(r, 50));
+    }
+
+    await bot.sendMessage(msg.chat.id,
+`📊 BROADCAST COMPLETE
+
+✅ Success: ${success}
+
+❌ Failed: ${failed}`
+    );
+});
+
+//////////////////////////////////////////////////////
+// CALLBACK
+//////////////////////////////////////////////////////
+
+bot.on("callback_query", async (query) => {
+
+    const chatId = query.message.chat.id;
+    const action = query.data;
+
+    await bot.answerCallbackQuery(query.id);
+
+    //////////////////////////////////////////////////
+    // REPLY MODE
+    //////////////////////////////////////////////////
+
+    if (action.startsWith("reply_")) {
+
+        if (String(chatId) !== OWNER_ID) return;
+
+        const userId = action.split("_")[1];
+        replyStates.set(chatId, userId);
+
+        return bot.sendMessage(chatId,
+`✍ Reply Mode
+
+Target: ${userId}
+
+Send message now`
+        );
+    }
+
+    //////////////////////////////////////////////////
+    // FORMAT CHOSEN
+    //////////////////////////////////////////////////
+
+    if (action.startsWith("fmt_")) {
+
+        const parts = action.split("_");
+        // fmt_{chatId}_{formatValue}
+        const targetChat = parts[1];
+        const formatValue = parts.slice(2).join("_");
+
+        if (String(chatId) !== String(targetChat)) return;
+
+        const state = formatStates.get(chatId);
+        if (!state) return;
+
+        const { data, url } = state;
+
+        formatStates.delete(chatId);
+
+        // Delete the format chooser message
+        bot.deleteMessage(chatId, query.message.message_id).catch(() => {});
+
+        const platform = detectPlatform(url);
+
+        // Save to history
+        saveHistory(chatId, {
+            title: data.title || "Untitled",
+            url: data.url || url,
+            thumbnail: data.thumbnail || null,
+            platform: data.source || platform || "unknown",
+            format: formatValue,
+            duration: data.extra?.duration || null,
+            timestamp: Date.now()
+        });
+
+        // Send download info — no thumbnail, no caption garbage
+        const keyboard = [
+            [{ text: "⬇️ Download", url: data.url || url }],
+            [
+                { text: "🛠 Tools", web_app: { url: "https://tools-amertak.vercel.app" } },
+                { text: "📊 Dashboard", web_app: { url: `${API_BASE}/dashboard/${chatId}` } }
+            ]
+        ];
+
+        await bot.sendMessage(chatId,
+`✅ Ready to download
+
+🎬 ${data.title || "Unknown"}
+🌐 ${data.source || platform || "Unknown"}
+📦 Format: ${formatValue}`,
+            { reply_markup: { inline_keyboard: keyboard } }
+        );
+
+        return;
+    }
+
+    //////////////////////////////////////////////////
+    // URL BUTTON
+    //////////////////////////////////////////////////
+
+    if (action.startsWith("open_")) {
+        return bot.sendMessage(chatId, action.replace("open_", ""));
+    }
+});
+
+//////////////////////////////////////////////////////
+// MAIN MESSAGE
+//////////////////////////////////////////////////////
+
+bot.on("message", async (msg) => {
+
+    const chatId = msg.chat.id;
+    const text = msg.text;
+
+    if (!text) return;
+
+    addUser(chatId);
+
+    if (text.startsWith("/")) return;
+
+    //////////////////////////////////////////////////
+    // OWNER REPLY MODE
+    //////////////////////////////////////////////////
+
+    if (String(chatId) === OWNER_ID && replyStates.has(chatId)) {
+
+        const target = replyStates.get(chatId);
+
+        try {
+            await bot.sendMessage(target, `📩 OWNER REPLY\n\n${text}`);
+            await bot.sendMessage(chatId, "✅ Sent");
+        } catch {
+            await bot.sendMessage(chatId, "❌ Failed");
+        }
+
+        replyStates.delete(chatId);
+        return;
+    }
+
+    //////////////////////////////////////////////////
+    // INVALID URL
+    //////////////////////////////////////////////////
+
+    if (!isURL(text)) {
+        return bot.sendMessage(chatId, "❌ Invalid URL");
+    }
+
+    //////////////////////////////////////////////////
+    // FETCH METADATA
+    //////////////////////////////////////////////////
+
+    const data = await fetchMetadata(chatId, text);
+
+    if (!data) return;
+
+    userStates.set(chatId, data);
+
+    const platform = detectPlatform(text);
+    const formats = formatsFor(platform);
+
+    // Store state for format callback
+    formatStates.set(chatId, { data, url: text });
+
+    //////////////////////////////////////////////////
+    // BUILD FORMAT KEYBOARD
+    //////////////////////////////////////////////////
+
+    const fmtRows = [];
+
+    // 2 buttons per row
+    for (let i = 0; i < formats.length; i += 2) {
+        const row = [];
+        row.push({
+            text: formats[i].label,
+            callback_data: `fmt_${chatId}_${formats[i].value}`
+        });
+        if (formats[i + 1]) {
+            row.push({
+                text: formats[i + 1].label,
+                callback_data: `fmt_${chatId}_${formats[i + 1].value}`
+            });
+        }
+        fmtRows.push(row);
+    }
+
+    //////////////////////////////////////////////////
+    // SEND FORMAT CHOOSER (no thumbnail, clean text)
+    //////////////////////////////////////////////////
+
+    await bot.sendMessage(chatId,
+`🎬 ${data.title || "Unknown"}
+🌐 ${data.source || platform || "Unknown"}
+
+📦 Choose format:`,
+        { reply_markup: { inline_keyboard: fmtRows } }
+    );
+});
+
+//////////////////////////////////////////////////////
+// AUTO CLEANUP
+//////////////////////////////////////////////////////
+
+setInterval(() => {
+    if (userStates.size > 1000) {
+        userStates.clear();
+        console.log("🧹 Cleared userStates");
+    }
+    if (formatStates.size > 1000) {
+        formatStates.clear();
+        console.log("🧹 Cleared formatStates");
+    }
+}, 1000 * 60 * 30);
+
+//////////////////////////////////////////////////////
+// READY
+//////////////////////////////////////////////////////
+
+console.log(`
+==========================================
+ BOT ONLINE
+==========================================
+
+FEATURES:
+✔ YouTube Metadata
+✔ Spotify Metadata
+✔ TikTok Metadata
+✔ Pinterest Metadata
+✔ Format Chooser (per platform)
+✔ Download History
+✔ Dashboard UI (/dashboard/:userId)
+✔ Ask System
+✔ Reply System
+✔ Broadcast
+✔ Progress UI
+✔ User Database
+✔ WebApp Buttons
+✔ Auto Cleanup
+✔ Render Ready
+
+==========================================
+`);
