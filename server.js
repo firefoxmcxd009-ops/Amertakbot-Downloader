@@ -41,6 +41,10 @@ const TOKEN = process.env.BOT_TOKEN;
 const OWNER_ID = String(process.env.OWNER_ID || "");
 const API_BASE = process.env.API_BASE || "http://localhost:3000";
 
+// BOT_URL = public HTTPS URL of THIS bot server (e.g. https://amertak-tools.onrender.com)
+// Set this in Render environment variables — needed for Dashboard web_app links
+const BOT_URL = (process.env.BOT_URL || "").replace(/\/$/, "");
+
 const PORT = process.env.PORT || 3000;
 
 //////////////////////////////////////////////////////
@@ -650,7 +654,7 @@ app.listen(PORT, () => {
 
 PORT: ${PORT}
 API : ${API_BASE}
-DASHBOARD: http://localhost:${PORT}/dashboard/:userId
+DASHBOARD: ${BOT_URL}/dashboard/:userId
 
 ==========================================
 `);
@@ -894,7 +898,7 @@ Commands:
                         },
                         {
                             text: "📊 Dashboard",
-                            web_app: { url: `${API_BASE}/dashboard/${msg.from.id}` }
+                            web_app: { url: `${BOT_URL}/dashboard/${msg.from.id}` }
                         }
                     ]
                 ]
@@ -1068,7 +1072,7 @@ Send message now`
             [{ text: "⬇️ Download", url: data.url || url }],
             [
                 { text: "🛠 Tools", web_app: { url: "https://tools-amertak.vercel.app" } },
-                { text: "📊 Dashboard", web_app: { url: `${API_BASE}/dashboard/${chatId}` } }
+                { text: "📊 Dashboard", web_app: { url: `${BOT_URL}/dashboard/${chatId}` } }
             ]
         ];
 
