@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+
+<title>AMERTAK Dashboard</title>
+
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<style>
+*{
+    margin:0;
+    padding:0;
+    box-sizing:border-box;
+}
+
+body{
+    background:#0f0f0f;
+    color:white;
+    font-family:"Inter",sans-serif;
+    overflow-x:hidden;
+}
+
+.container{
+    width:100%;
+    max-width:1200px;
+    margin:auto;
+    padding:20px;
+}
+
+.topbar{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    margin-bottom:25px;
+}
+
+.logo{
+    font-size:28px;
+    font-weight:700;
+    background:linear-gradient(90deg,#8b5cf6,#ec4899);
+    -webkit-background-clip:text;
+    -webkit-text-fill-color:transparent;
+}
+
+.badge{
+    background:#18181b;
+    border:1px solid #27272a;
+    padding:10px 18px;
+    border-radius:14px;
+    font-size:14px;
+}
+
+.grid{
+    display:grid;
+    grid-template-columns:repeat(auto-fit,minmax(240px,1fr));
+    gap:18px;
+}
+
+.card{
+    background:#18181b;
+    border:1px solid #27272a;
+    border-radius:22px;
+    padding:22px;
+    transition:0.25s;
+}
+
+.card:hover{
+    transform:translateY(-4px);
+    border-color:#8b5cf6;
+}
+
+.card-title{
+    font-size:14px;
+    color:#a1a1aa;
+    margin-bottom:12px;
+}
+
+.card-value{
+    font-size:34px;
+    font-weight:700;
+}
+
+.actions{
+    margin-top:28px;
+    display:grid;
+    grid-template-columns:repeat(auto-fit,minmax(200px,1fr));
+    gap:18px;
+}
+
+.btn{
+    border:none;
+    outline:none;
+    border-radius:18px;
+    padding:18px;
+    font-size:15px;
+    font-weight:600;
+    cursor:pointer;
+    transition:0.25s;
+    color:white;
+}
+
+.btn:hover{
+    transform:scale(1.03);
+}
+
+.btn-purple{
+    background:linear-gradient(90deg,#7c3aed,#a855f7);
+}
+
+.btn-pink{
+    background:linear-gradient(90deg,#ec4899,#f43f5e);
+}
+
+.btn-blue{
+    background:linear-gradient(90deg,#3b82f6,#06b6d4);
+}
+
+.section{
+    margin-top:35px;
+}
+
+.section-title{
+    font-size:22px;
+    font-weight:700;
+    margin-bottom:20px;
+}
+
+.history{
+    display:flex;
+    flex-direction:column;
+    gap:16px;
+}
+
+.item{
+    background:#18181b;
+    border:1px solid #27272a;
+    border-radius:20px;
+    padding:18px;
+    display:flex;
+    align-items:center;
+    gap:18px;
+}
+
+.thumb{
+    width:110px;
+    height:70px;
+    border-radius:14px;
+    object-fit:cover;
+    background:#27272a;
+}
+
+.item-info{
+    flex:1;
+}
+
+.item-title{
+    font-size:16px;
+    font-weight:600;
+    margin-bottom:8px;
+}
+
+.item-meta{
+    font-size:13px;
+    color:#a1a1aa;
+}
+
+.footer{
+    margin-top:40px;
+    text-align:center;
+    color:#71717a;
+    font-size:13px;
+}
+
+.loading{
+    width:100%;
+    padding:40px;
+    text-align:center;
+    color:#a1a1aa;
+}
+
+@media(max-width:700px){
+
+    .topbar{
+        flex-direction:column;
+        gap:14px;
+        align-items:flex-start;
+    }
+
+    .item{
+        flex-direction:column;
+        align-items:flex-start;
+    }
+
+    .thumb{
+        width:100%;
+        height:180px;
+    }
+}
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+    <div class="topbar">
+        <div class="logo">AMERTAK</div>
+
+        <div class="badge">
+            🚀 Downloader Dashboard
+        </div>
+    </div>
+
+    <div class="grid">
+
+        <div class="card">
+            <div class="card-title">
+                Total Downloads
+            </div>
+
+            <div class="card-value" id="downloads">
+                0
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-title">
+                Platform
+            </div>
+
+            <div class="card-value">
+                Telegram
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-title">
+                Status
+            </div>
+
+            <div class="card-value">
+                Online
+            </div>
+        </div>
+
+    </div>
+
+    <div class="actions">
+
+        <button class="btn btn-purple" onclick="openBot()">
+            🤖 Open Bot
+        </button>
+
+        <button class="btn btn-pink" onclick="refreshData()">
+            🔄 Refresh
+        </button>
+
+        <button class="btn btn-blue" onclick="clearHistory()">
+            🗑 Clear History
+        </button>
+
+    </div>
+
+    <div class="section">
+
+        <div class="section-title">
+            📦 Download History
+        </div>
+
+        <div class="history" id="history">
+            <div class="loading">
+                Loading...
+            </div>
+        </div>
+
+    </div>
+
+    <div class="footer">
+        AMERTAK Downloader © 2026
+    </div>
+
+</div>
+
+<script>
+
+//////////////////////////////////////////////////////
+// CONFIG
+//////////////////////////////////////////////////////
+
+const BOT_USERNAME = "amertak_bot";
+
+//////////////////////////////////////////////////////
+// USER ID
+//////////////////////////////////////////////////////
+
+const pathParts = window.location.pathname.split("/");
+
+const userId = pathParts[pathParts.length - 1];
+
+//////////////////////////////////////////////////////
+// LOAD HISTORY
+//////////////////////////////////////////////////////
+
+async function loadHistory() {
+
+    try {
+
+        const res = await fetch(
+            `/api/history/${userId}`
+        );
+
+        const data = await res.json();
+
+        const history = data.history || [];
+
+        document.getElementById("downloads").innerText =
+            history.length;
+
+        const container =
+            document.getElementById("history");
+
+        //////////////////////////////////////////////////////
+        // EMPTY
+        //////////////////////////////////////////////////////
+
+        if (!history.length) {
+
+            container.innerHTML =
+`
+<div class="loading">
+No downloads yet
+</div>
+`;
+
+            return;
+        }
+
+        //////////////////////////////////////////////////////
+        // RENDER
+        //////////////////////////////////////////////////////
+
+        container.innerHTML = history.map(item => {
+
+            return `
+<div class="item">
+
+    <img
+        class="thumb"
+        src="${item.thumbnail || "https://placehold.co/600x400"}"
+    >
+
+    <div class="item-info">
+
+        <div class="item-title">
+            ${escapeHtml(item.title || "Unknown")}
+        </div>
+
+        <div class="item-meta">
+            ${item.platform || "unknown"} •
+            ${item.format || "mp4"}
+        </div>
+
+    </div>
+
+</div>
+`;
+
+        }).join("");
+
+    } catch (err) {
+
+        console.error(err);
+
+        document.getElementById("history").innerHTML =
+`
+<div class="loading">
+Failed to load
+</div>
+`;
+    }
+}
+
+//////////////////////////////////////////////////////
+// REFRESH
+//////////////////////////////////////////////////////
+
+function refreshData() {
+    loadHistory();
+}
+
+//////////////////////////////////////////////////////
+// OPEN BOT
+//////////////////////////////////////////////////////
+
+function openBot() {
+
+    window.open(
+        `https://t.me/${BOT_USERNAME}`,
+        "_blank"
+    );
+}
+
+//////////////////////////////////////////////////////
+// CLEAR HISTORY
+//////////////////////////////////////////////////////
+
+async function clearHistory() {
+
+    if (!confirm("Clear all history?")) {
+        return;
+    }
+
+    try {
+
+        await fetch(
+            `/api/history/${userId}`,
+            {
+                method: "DELETE"
+            }
+        );
+
+        loadHistory();
+
+    } catch (err) {
+
+        alert("Failed");
+    }
+}
+
+//////////////////////////////////////////////////////
+// ESCAPE HTML
+//////////////////////////////////////////////////////
+
+function escapeHtml(text="") {
+
+    return text
+        .replace(/&/g,"&amp;")
+        .replace(/</g,"&lt;")
+        .replace(/>/g,"&gt;");
+}
+
+//////////////////////////////////////////////////////
+// INIT
+//////////////////////////////////////////////////////
+
+loadHistory();
+
+</script>
+
+</body>
+</html>

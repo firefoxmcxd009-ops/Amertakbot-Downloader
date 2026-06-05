@@ -144,6 +144,100 @@ bot.on("polling_error", async (err) => {
         return setTimeout(startBot, 5000);
     }
 });
+//////////////////////////////////////////////////////
+// DASHBOARD STATIC
+//////////////////////////////////////////////////////
+
+app.use(
+    "/dashboard",
+    express.static(
+        path.join(__dirname, "public")
+    )
+);
+
+//////////////////////////////////////////////////////
+// DASHBOARD PAGE
+//////////////////////////////////////////////////////
+
+app.get("/dashboard/:id", (req, res) => {
+
+    res.sendFile(
+        path.join(
+            __dirname,
+            "public",
+            "dashboard.html"
+        )
+    );
+});
+
+//////////////////////////////////////////////////////
+// GET HISTORY
+//////////////////////////////////////////////////////
+
+app.get("/api/history/:id", (req, res) => {
+
+    try {
+
+        const all = JSON.parse(
+            fs.readFileSync(HISTORY_FILE, "utf8")
+        );
+
+        const history =
+            all[String(req.params.id)] || [];
+
+        res.json({
+            success: true,
+            history
+        });
+
+    } catch (err) {
+
+        res.json({
+            success: false,
+            history: []
+        });
+    }
+});
+
+//////////////////////////////////////////////////////
+// CLEAR HISTORY
+//////////////////////////////////////////////////////
+
+app.delete("/api/history/:id", (req, res) => {
+
+    try {
+
+        let all = {};
+
+        try {
+
+            all = JSON.parse(
+                fs.readFileSync(
+                    HISTORY_FILE,
+                    "utf8"
+                )
+            );
+
+        } catch {}
+
+        delete all[String(req.params.id)];
+
+        fs.writeFileSync(
+            HISTORY_FILE,
+            JSON.stringify(all, null, 2)
+        );
+
+        res.json({
+            success: true
+        });
+
+    } catch (err) {
+
+        res.json({
+            success: false
+        });
+    }
+});
 
 //////////////////////////////////////////////////////
 // DATABASE
