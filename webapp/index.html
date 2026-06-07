@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="km">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Amertak Downloader — Dashboard</title>
+  <style>
+    :root {
+      --bg:      #0d0d0f;
+      --surface: #17171b;
+      --card:    #1e1e24;
+      --border:  #2a2a34;
+      --accent:  #7c3aed;
+      --accent2: #a855f7;
+      --green:   #22c55e;
+      --red:     #ef4444;
+      --yellow:  #f59e0b;
+      --blue:    #3b82f6;
+      --text:    #f1f5f9;
+      --muted:   #64748b;
+      --r:       14px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      min-height: 100vh;
+      padding-bottom: 40px;
+    }
+
+    /* ── Header ── */
+    header {
+      background: linear-gradient(135deg, #1a0533 0%, #0d0d1a 100%);
+      border-bottom: 1px solid var(--border);
+      padding: 20px 24px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      position: sticky; top: 0; z-index: 10;
+    }
+    .logo { font-size: 28px; }
+    .header-text h1 { font-size: 20px; font-weight: 700; }
+    .header-text p  { font-size: 13px; color: var(--muted); }
+    .badge {
+      margin-left: auto;
+      background: var(--accent);
+      color: #fff;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 4px 10px;
+      border-radius: 20px;
+      letter-spacing: .5px;
+    }
+
+    /* ── Layout ── */
+    .container { max-width: 780px; margin: 0 auto; padding: 24px 16px; }
+
+    /* ── Stat cards ── */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+      gap: 14px;
+      margin-bottom: 28px;
+    }
+    .stat-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      padding: 18px 16px;
+      text-align: center;
+    }
+    .stat-card .num  { font-size: 30px; font-weight: 800; color: var(--accent2); }
+    .stat-card .lbl  { font-size: 12px; color: var(--muted); margin-top: 4px; }
+
+    /* ── Section ── */
+    .section-title {
+      font-size: 16px; font-weight: 700;
+      margin-bottom: 14px;
+      display: flex; align-items: center; gap: 8px;
+    }
+
+    /* ── History cards ── */
+    .history-list { display: flex; flex-direction: column; gap: 12px; }
+
+    .hist-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      padding: 14px 16px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      transition: border-color .2s;
+    }
+    .hist-card:hover { border-color: var(--accent); }
+
+    .hist-thumb {
+      width: 60px; height: 60px;
+      border-radius: 8px;
+      object-fit: cover;
+      flex-shrink: 0;
+      background: var(--surface);
+    }
+    .hist-thumb-placeholder {
+      width: 60px; height: 60px;
+      border-radius: 8px;
+      background: var(--surface);
+      flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 24px;
+    }
+
+    .hist-info { flex: 1; min-width: 0; }
+    .hist-title {
+      font-size: 14px; font-weight: 600;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .hist-meta {
+      font-size: 12px; color: var(--muted);
+      margin-top: 4px;
+      display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
+    }
+
+    .chip {
+      display: inline-flex; align-items: center;
+      padding: 2px 8px; border-radius: 20px;
+      font-size: 11px; font-weight: 600;
+    }
+    .chip-video  { background: #1d4ed820; color: var(--blue); }
+    .chip-audio  { background: #7c3aed20; color: var(--accent2); }
+    .chip-image  { background: #16a34a20; color: var(--green); }
+
+    .re-btn {
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 8px 14px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+      flex-shrink: 0;
+      transition: background .2s;
+    }
+    .re-btn:hover   { background: var(--accent2); }
+    .re-btn:active  { transform: scale(.97); }
+    .re-btn:disabled { opacity: .5; cursor: not-allowed; }
+
+    /* ── Platform breakdown ── */
+    .plat-grid {
+      display: flex; flex-wrap: wrap; gap: 10px;
+      margin-bottom: 28px;
+    }
+    .plat-chip {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 6px 14px;
+      font-size: 13px;
+      display: flex; align-items: center; gap: 6px;
+    }
+    .plat-chip .cnt { color: var(--accent2); font-weight: 700; }
+
+    /* ── Empty / Loading ── */
+    .empty {
+      text-align: center; padding: 60px 20px;
+      color: var(--muted); font-size: 15px;
+    }
+    .empty .icon { font-size: 50px; margin-bottom: 14px; }
+
+    .loader {
+      display: flex; align-items: center; justify-content: center;
+      gap: 10px; padding: 40px;
+      color: var(--muted);
+    }
+    .spinner {
+      width: 22px; height: 22px;
+      border: 3px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── User ID input ── */
+    .uid-bar {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      padding: 14px 16px;
+      margin-bottom: 24px;
+      display: flex; gap: 10px;
+    }
+    .uid-bar input {
+      flex: 1;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      padding: 8px 12px;
+      font-size: 14px;
+      outline: none;
+    }
+    .uid-bar input:focus { border-color: var(--accent); }
+    .uid-bar button {
+      background: var(--accent);
+      color: #fff; border: none;
+      border-radius: 8px;
+      padding: 8px 18px;
+      font-weight: 700; font-size: 14px;
+      cursor: pointer;
+    }
+
+    /* ── Toast ── */
+    #toast {
+      position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+      background: #1e1e28;
+      border: 1px solid var(--accent);
+      color: var(--text);
+      padding: 12px 22px;
+      border-radius: 30px;
+      font-size: 14px;
+      opacity: 0; pointer-events: none;
+      transition: opacity .3s;
+      z-index: 99;
+    }
+    #toast.show { opacity: 1; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">🔥</div>
+  <div class="header-text">
+    <h1>Amertak Downloader</h1>
+    <p id="uid-display">Dashboard</p>
+  </div>
+  <span class="badge">v2.0</span>
+</header>
+
+<div class="container">
+
+  <!-- UID bar (if not passed via query) -->
+  <div class="uid-bar" id="uid-bar" style="display:none">
+    <input type="number" id="uid-input" placeholder="Enter your Telegram User ID" />
+    <button onclick="loadFromInput()">Load</button>
+  </div>
+
+  <!-- Stats -->
+  <div class="stats-grid" id="stats-grid">
+    <div class="stat-card"><div class="num" id="stat-total">—</div><div class="lbl">Total Downloads</div></div>
+    <div class="stat-card"><div class="num" id="stat-vid">—</div><div class="lbl">Videos</div></div>
+    <div class="stat-card"><div class="num" id="stat-aud">—</div><div class="lbl">Audios</div></div>
+    <div class="stat-card"><div class="num" id="stat-img">—</div><div class="lbl">Images</div></div>
+  </div>
+
+  <!-- Platform breakdown -->
+  <div class="section-title">🌐 Platforms</div>
+  <div class="plat-grid" id="plat-grid"></div>
+
+  <!-- History -->
+  <div class="section-title">📂 Download History</div>
+  <div id="history-container">
+    <div class="loader"><div class="spinner"></div> Loading...</div>
+  </div>
+
+</div>
+
+<div id="toast"></div>
+
+<script>
+  const PLATFORM_ICONS = {
+    YouTube:"🎬", TikTok:"🎵", Instagram:"📸", "Twitter/X":"🐦",
+    Facebook:"📘", Spotify:"🎧", SoundCloud:"🎤", Pinterest:"📌",
+    Reddit:"👽", Twitch:"🎮", Vimeo:"🎞", Dailymotion:"📺", Unknown:"🌐"
+  };
+  const FORMAT_ICONS = { video:"🎬", video_hd:"🎬", video_sd:"📹", audio:"🎵", image:"🖼" };
+
+  let userId = null;
+
+  function getUidFromUrl() {
+    const params = new URLSearchParams(window.location.search);
+    return params.get("uid") || params.get("user_id");
+  }
+
+  function showToast(msg, duration = 2500) {
+    const t = document.getElementById("toast");
+    t.textContent = msg;
+    t.classList.add("show");
+    setTimeout(() => t.classList.remove("show"), duration);
+  }
+
+  async function loadDashboard(uid) {
+    userId = uid;
+    document.getElementById("uid-display").textContent = `User ID: ${uid}`;
+
+    // Fetch stats
+    try {
+      const res  = await fetch(`/api/stats/${uid}`);
+      const json = await res.json();
+      const s    = json.data;
+
+      document.getElementById("stat-total").textContent = s.total ?? 0;
+      document.getElementById("stat-vid").textContent  =
+        (s.formats?.video_hd || 0) + (s.formats?.video_sd || 0) + (s.formats?.video || 0);
+      document.getElementById("stat-aud").textContent  = s.formats?.audio || 0;
+      document.getElementById("stat-img").textContent  = s.formats?.image || 0;
+
+      // Platforms
+      const platGrid = document.getElementById("plat-grid");
+      platGrid.innerHTML = "";
+      if (s.platforms && Object.keys(s.platforms).length) {
+        Object.entries(s.platforms)
+          .sort((a, b) => b[1] - a[1])
+          .forEach(([p, cnt]) => {
+            platGrid.innerHTML += `
+              <div class="plat-chip">
+                ${PLATFORM_ICONS[p] || "🌐"} ${p}
+                <span class="cnt">${cnt}</span>
+              </div>`;
+          });
+      } else {
+        platGrid.innerHTML = `<span style="color:var(--muted);font-size:13px">No data yet</span>`;
+      }
+    } catch (e) {
+      console.error("Stats error:", e);
+    }
+
+    // Fetch history
+    try {
+      const res  = await fetch(`/api/history/${uid}`);
+      const json = await res.json();
+      renderHistory(json.data || []);
+    } catch (e) {
+      renderHistory([]);
+    }
+  }
+
+  function renderHistory(records) {
+    const container = document.getElementById("history-container");
+
+    if (!records.length) {
+      container.innerHTML = `
+        <div class="empty">
+          <div class="icon">📭</div>
+          <div>មិនទាន់មាន Download History</div>
+          <div style="margin-top:8px;font-size:13px">ផ្ញើ Link ក្នុង Bot ដើម្បីចាប់ផ្តើម!</div>
+        </div>`;
+      return;
+    }
+
+    container.innerHTML = `<div class="history-list">${records.map(renderCard).join("")}</div>`;
+  }
+
+  function renderCard(r) {
+    const fmtChip = r.format?.includes("video") ? "chip-video"
+                  : r.format === "audio"         ? "chip-audio"
+                  : "chip-image";
+    const fmtIcon = FORMAT_ICONS[r.format] || "📁";
+    const platIcon = PLATFORM_ICONS[r.platform] || "🌐";
+    const date = r.timestamp ? new Date(r.timestamp).toLocaleDateString("km-KH") : "";
+
+    const thumb = r.thumbnail
+      ? `<img class="hist-thumb" src="${escHtml(r.thumbnail)}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" /><div class="hist-thumb-placeholder" style="display:none">${platIcon}</div>`
+      : `<div class="hist-thumb-placeholder">${platIcon}</div>`;
+
+    return `
+      <div class="hist-card">
+        ${thumb}
+        <div class="hist-info">
+          <div class="hist-title">${escHtml(r.title || "Untitled")}</div>
+          <div class="hist-meta">
+            <span>${platIcon} ${escHtml(r.platform)}</span>
+            <span class="chip ${fmtChip}">${fmtIcon} ${(r.format||"").toUpperCase()}</span>
+            ${date ? `<span>📅 ${date}</span>` : ""}
+          </div>
+        </div>
+        <button class="re-btn" onclick="redownload(this,'${escAttr(r.url)}','${escAttr(r.format)}')">
+          🔁 ដោនឡូត
+        </button>
+      </div>`;
+  }
+
+  async function redownload(btn, url, format) {
+    btn.disabled = true;
+    btn.textContent = "⏳...";
+
+    try {
+      showToast("⏳ Sending to Bot...");
+      // Deep-link to Telegram bot with encoded URL
+      const botName = document.body.dataset.botname || "AmertakBot";
+      // For Telegram WebApp, use Telegram.WebApp if available
+      if (window.Telegram?.WebApp) {
+        window.Telegram.WebApp.sendData(JSON.stringify({ action:"redownload", url, format }));
+      } else {
+        // Fallback: open bot with start param
+        const encoded = encodeURIComponent(url).slice(0, 150);
+        window.open(`https://t.me/${botName}?start=rd_${format}_${encoded}`, "_blank");
+      }
+      showToast("✅ Sent to Bot!");
+    } catch (e) {
+      showToast("❌ Error: " + e.message);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "🔁 ដោនឡូត";
+    }
+  }
+
+  function loadFromInput() {
+    const val = document.getElementById("uid-input").value.trim();
+    if (!val) return showToast("Enter your User ID!");
+    document.getElementById("uid-bar").style.display = "none";
+    loadDashboard(val);
+  }
+
+  function escHtml(str) {
+    return String(str || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+  }
+  function escAttr(str) {
+    return String(str || "").replace(/'/g,"\\'").replace(/"/g,'\\"');
+  }
+
+  // ── Init ───────────────────────────────────────────────────────────
+  const uid = getUidFromUrl();
+  if (uid) {
+    loadDashboard(uid);
+  } else {
+    document.getElementById("history-container").innerHTML = `<div class="empty"><div class="icon">🔒</div><div>Enter your Telegram User ID to view history</div></div>`;
+    document.getElementById("uid-bar").style.display = "flex";
+    // Stats placeholder
+    ["stat-total","stat-vid","stat-aud","stat-img"].forEach(id => {
+      document.getElementById(id).textContent = "0";
+    });
+  }
+</script>
+</body>
+</html>
