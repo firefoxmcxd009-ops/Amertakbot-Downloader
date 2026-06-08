@@ -397,7 +397,7 @@ async function downloadYouTubeMP3(
 
   exec(
 
-`yt-dlp -x --audio-format mp3 -o "${output}" "${url}"`,
+`yt-dlp -f bestaudio -o "${output}" "${url}"`,
 
     async (err) => {
 
