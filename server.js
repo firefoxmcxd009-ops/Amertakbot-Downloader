@@ -7,340 +7,530 @@ const { exec } = require("child_process");
 const TelegramBot = require("node-telegram-bot-api");
 
 /*
-===================================
+========================================
+CLEAR OLD WEBHOOK
+========================================
+*/
+
+const TOKEN = process.env.BOT_TOKEN;
+
+(async () => {
+
+  try {
+
+    await fetch(
+      `https://api.telegram.org/bot${TOKEN}/deleteWebhook`
+    );
+
+    console.log("✅ Old webhook removed");
+
+  } catch (err) {
+
+    console.log(err);
+
+  }
+
+})();
+
+/*
+========================================
 BOT
-===================================
+========================================
 */
 
 const bot = new TelegramBot(
-  process.env.BOT_TOKEN,
+  TOKEN,
   {
-    polling: {
-      autoStart: true,
-      interval: 300,
-      params: {
-        timeout: 10
-      }
-    }
+    polling: true
   }
 );
 
 /*
-===================================
-ANTI 409 CONFLICT
-===================================
+========================================
+ANTI CRASH
+========================================
 */
 
-process.on("SIGINT", async () => {
-  console.log("Stopping bot...");
+process.on(
+  "unhandledRejection",
+  console.error
+);
 
-  try {
-    await bot.stopPolling();
-  } catch {}
-
-  process.exit(0);
-});
-
-process.on("SIGTERM", async () => {
-  console.log("Stopping bot...");
-
-  try {
-    await bot.stopPolling();
-  } catch {}
-
-  process.exit(0);
-});
+process.on(
+  "uncaughtException",
+  console.error
+);
 
 /*
-===================================
-FOLDERS
-===================================
+========================================
+STOP POLLING
+========================================
+*/
+
+process.on(
+  "SIGINT",
+  async () => {
+
+    console.log("Stopping bot...");
+
+    try {
+
+      await bot.stopPolling();
+
+    } catch {}
+
+    process.exit(0);
+
+  }
+);
+
+process.on(
+  "SIGTERM",
+  async () => {
+
+    console.log("Stopping bot...");
+
+    try {
+
+      await bot.stopPolling();
+
+    } catch {}
+
+    process.exit(0);
+
+  }
+);
+
+/*
+========================================
+DOWNLOADS
+========================================
 */
 
 const DOWNLOAD_DIR =
-  path.join(__dirname, "downloads");
+  path.join(
+    __dirname,
+    "downloads"
+  );
 
-if (!fs.existsSync(DOWNLOAD_DIR)) {
+if (
+  !fs.existsSync(DOWNLOAD_DIR)
+) {
+
   fs.mkdirSync(DOWNLOAD_DIR);
+
 }
 
-console.log("🚀 Downloader Bot Running");
+console.log(
+  "🚀 Downloader Bot Running"
+);
 
 /*
-===================================
+========================================
 START
-===================================
+========================================
 */
 
-bot.onText(/\/start/, async (msg) => {
+bot.onText(
+  /\/start/,
+  async (msg) => {
 
-  bot.sendMessage(
-    msg.chat.id,
+    bot.sendMessage(
+
+      msg.chat.id,
 
 `🔥 *ALL IN ONE DOWNLOADER BOT*
 
 📥 Supported Platforms
 
-🎵 Spotify
 📺 YouTube
 🎬 TikTok
 📌 Pinterest
+🎵 Spotify
 
-Send any supported link 🔗`,
+Send supported URL 🔗`,
 
-    {
-      parse_mode: "Markdown"
-    }
-  );
+      {
+        parse_mode: "Markdown"
+      }
 
-});
+    );
+
+  }
+);
 
 /*
-===================================
+========================================
 MESSAGE HANDLER
-===================================
+========================================
 */
 
-bot.on("message", async (msg) => {
+bot.on(
+  "message",
+  async (msg) => {
 
-  try {
+    try {
 
-    const chatId = msg.chat.id;
-    const text = msg.text;
+      const chatId =
+        msg.chat.id;
 
-    if (!text) return;
-    if (text.startsWith("/")) return;
+      const text =
+        msg.text;
 
-    /*
-    ===============================
-    YOUTUBE
-    ===============================
-    */
+      if (!text) return;
 
-    if (
-      text.includes("youtube.com") ||
-      text.includes("youtu.be")
-    ) {
+      if (
+        text.startsWith("/")
+      ) return;
 
-      return bot.sendMessage(
-        chatId,
+      /*
+      ========================================
+      YOUTUBE
+      ========================================
+      */
+
+      if (
+
+        text.includes("youtube.com") ||
+        text.includes("youtu.be")
+
+      ) {
+
+        return bot.sendMessage(
+
+          chatId,
 
 `📺 *YouTube Downloader*
 
 Choose format 👇`,
 
-        {
-          parse_mode: "Markdown",
+          {
+            parse_mode:
+              "Markdown",
 
-          reply_markup: {
-            inline_keyboard: [
+            reply_markup: {
+              inline_keyboard: [
 
-              [
-                {
-                  text: "🎥 MP4 Video",
-                  callback_data:
-                    `yt_mp4|${text}`
-                }
-              ],
+                [
+                  {
+                    text:
+                      "🎥 MP4 Video",
 
-              [
-                {
-                  text: "🎵 MP3 Audio",
-                  callback_data:
-                    `yt_mp3|${text}`
-                }
+                    callback_data:
+                      `yt_mp4|${text}`
+                  }
+                ],
+
+                [
+                  {
+                    text:
+                      "🎵 MP3 Audio",
+
+                    callback_data:
+                      `yt_mp3|${text}`
+                  }
+                ],
+
+                [
+                  {
+                    text:
+                      "🖼 Thumbnail",
+
+                    callback_data:
+                      `yt_thumb|${text}`
+                  }
+                ]
+
               ]
-
-            ]
+            }
           }
-        }
-      );
-    }
 
-    /*
-    ===============================
-    TIKTOK
-    ===============================
-    */
+        );
 
-    if (
-      text.includes("tiktok.com")
-    ) {
+      }
 
-      return bot.sendMessage(
-        chatId,
+      /*
+      ========================================
+      TIKTOK
+      ========================================
+      */
+
+      if (
+        text.includes("tiktok.com")
+      ) {
+
+        return bot.sendMessage(
+
+          chatId,
 
 `🎬 *TikTok Downloader*
 
-Choose option 👇`,
+Choose format 👇`,
 
-        {
-          parse_mode: "Markdown",
+          {
+            parse_mode:
+              "Markdown",
 
-          reply_markup: {
-            inline_keyboard: [
+            reply_markup: {
+              inline_keyboard: [
 
-              [
-                {
-                  text: "🎥 No Watermark",
-                  callback_data:
-                    `tt_video|${text}`
-                }
-              ],
+                [
+                  {
+                    text:
+                      "🎥 No Watermark",
 
-              [
-                {
-                  text: "🎵 MP3 Audio",
-                  callback_data:
-                    `tt_audio|${text}`
-                }
+                    callback_data:
+                      `tt_video|${text}`
+                  }
+                ],
+
+                [
+                  {
+                    text:
+                      "🎵 MP3 Audio",
+
+                    callback_data:
+                      `tt_audio|${text}`
+                  }
+                ],
+
+                [
+                  {
+                    text:
+                      "🖼 Cover Image",
+
+                    callback_data:
+                      `tt_image|${text}`
+                  }
+                ]
+
               ]
-
-            ]
+            }
           }
-        }
-      );
-    }
 
-    /*
-    ===============================
-    PINTEREST
-    ===============================
-    */
+        );
 
-    if (
-      text.includes("pinterest.com") ||
-      text.includes("pin.it")
-    ) {
+      }
 
-      return downloadPinterest(
+      /*
+      ========================================
+      PINTEREST
+      ========================================
+      */
+
+      if (
+
+        text.includes("pinterest.com") ||
+        text.includes("pin.it")
+
+      ) {
+
+        return bot.sendMessage(
+
+          chatId,
+
+`📌 *Pinterest Downloader*
+
+Choose format 👇`,
+
+          {
+            parse_mode:
+              "Markdown",
+
+            reply_markup: {
+              inline_keyboard: [
+
+                [
+                  {
+                    text:
+                      "🖼 Download Image",
+
+                    callback_data:
+                      `pin_image|${text}`
+                  }
+                ]
+
+              ]
+            }
+          }
+
+        );
+
+      }
+
+      /*
+      ========================================
+      SPOTIFY
+      ========================================
+      */
+
+      if (
+        text.includes("spotify.com")
+      ) {
+
+        return spotifyInfo(
+          chatId,
+          text
+        );
+
+      }
+
+      /*
+      ========================================
+      UNSUPPORTED
+      ========================================
+      */
+
+      bot.sendMessage(
         chatId,
-        text
+        "❌ Unsupported URL"
       );
+
+    } catch (err) {
+
+      console.log(err);
+
     }
-
-    /*
-    ===============================
-    SPOTIFY
-    ===============================
-    */
-
-    if (
-      text.includes("spotify.com")
-    ) {
-
-      return spotifyInfo(
-        chatId,
-        text
-      );
-    }
-
-    /*
-    ===============================
-    UNSUPPORTED
-    ===============================
-    */
-
-    bot.sendMessage(
-      chatId,
-      "❌ Unsupported link"
-    );
-
-  } catch (err) {
-
-    console.log(err);
 
   }
-
-});
+);
 
 /*
-===================================
+========================================
 BUTTON HANDLER
-===================================
+========================================
 */
 
-bot.on("callback_query", async (query) => {
+bot.on(
+  "callback_query",
+  async (query) => {
 
-  try {
+    try {
 
-    await bot.answerCallbackQuery(
-      query.id
-    );
-
-    const chatId =
-      query.message.chat.id;
-
-    const data =
-      query.data.split("|");
-
-    const action = data[0];
-    const url = data[1];
-
-    /*
-    ===============================
-    YOUTUBE MP4
-    ===============================
-    */
-
-    if (action === "yt_mp4") {
-      return downloadYouTubeVideo(
-        chatId,
-        url
+      await bot.answerCallbackQuery(
+        query.id
       );
+
+      const chatId =
+        query.message.chat.id;
+
+      const data =
+        query.data.split("|");
+
+      const action =
+        data[0];
+
+      const url =
+        data[1];
+
+      /*
+      ========================================
+      YOUTUBE
+      ========================================
+      */
+
+      if (
+        action === "yt_mp4"
+      ) {
+
+        return downloadYouTubeVideo(
+          chatId,
+          url
+        );
+
+      }
+
+      if (
+        action === "yt_mp3"
+      ) {
+
+        return downloadYouTubeAudio(
+          chatId,
+          url
+        );
+
+      }
+
+      if (
+        action === "yt_thumb"
+      ) {
+
+        return downloadYouTubeThumbnail(
+          chatId,
+          url
+        );
+
+      }
+
+      /*
+      ========================================
+      TIKTOK
+      ========================================
+      */
+
+      if (
+        action === "tt_video"
+      ) {
+
+        return downloadTikTokVideo(
+          chatId,
+          url
+        );
+
+      }
+
+      if (
+        action === "tt_audio"
+      ) {
+
+        return downloadTikTokAudio(
+          chatId,
+          url
+        );
+
+      }
+
+      if (
+        action === "tt_image"
+      ) {
+
+        return downloadTikTokImage(
+          chatId,
+          url
+        );
+
+      }
+
+      /*
+      ========================================
+      PINTEREST
+      ========================================
+      */
+
+      if (
+        action === "pin_image"
+      ) {
+
+        return downloadPinterest(
+          chatId,
+          url
+        );
+
+      }
+
+    } catch (err) {
+
+      console.log(err);
+
     }
-
-    /*
-    ===============================
-    YOUTUBE MP3
-    ===============================
-    */
-
-    if (action === "yt_mp3") {
-      return downloadYouTubeMP3(
-        chatId,
-        url
-      );
-    }
-
-    /*
-    ===============================
-    TIKTOK VIDEO
-    ===============================
-    */
-
-    if (action === "tt_video") {
-      return downloadTikTokVideo(
-        chatId,
-        url
-      );
-    }
-
-    /*
-    ===============================
-    TIKTOK AUDIO
-    ===============================
-    */
-
-    if (action === "tt_audio") {
-      return downloadTikTokAudio(
-        chatId,
-        url
-      );
-    }
-
-  } catch (err) {
-
-    console.log(err);
 
   }
-
-});
+);
 
 /*
-===================================
+========================================
 YOUTUBE VIDEO
-===================================
+========================================
 */
 
 async function downloadYouTubeVideo(
@@ -375,8 +565,9 @@ async function downloadYouTubeVideo(
 
         return bot.sendMessage(
           chatId,
-          "❌ Failed download"
+          "❌ Video failed"
         );
+
       }
 
       try {
@@ -386,7 +577,7 @@ async function downloadYouTubeVideo(
           output,
           {
             caption:
-              "✅ YouTube Video Downloaded"
+              "✅ YouTube Video"
           }
         );
 
@@ -396,8 +587,12 @@ async function downloadYouTubeVideo(
 
       }
 
-      if (fs.existsSync(output)) {
+      if (
+        fs.existsSync(output)
+      ) {
+
         fs.unlinkSync(output);
+
       }
 
       bot.deleteMessage(
@@ -412,12 +607,12 @@ async function downloadYouTubeVideo(
 }
 
 /*
-===================================
-YOUTUBE MP3
-===================================
+========================================
+YOUTUBE AUDIO
+========================================
 */
 
-async function downloadYouTubeMP3(
+async function downloadYouTubeAudio(
   chatId,
   url
 ) {
@@ -449,8 +644,9 @@ async function downloadYouTubeMP3(
 
         return bot.sendMessage(
           chatId,
-          "❌ Failed download"
+          "❌ Audio failed"
         );
+
       }
 
       try {
@@ -460,7 +656,7 @@ async function downloadYouTubeMP3(
           output,
           {
             caption:
-              "✅ Audio Downloaded"
+              "✅ YouTube Audio"
           }
         );
 
@@ -470,8 +666,12 @@ async function downloadYouTubeMP3(
 
       }
 
-      if (fs.existsSync(output)) {
+      if (
+        fs.existsSync(output)
+      ) {
+
         fs.unlinkSync(output);
+
       }
 
       bot.deleteMessage(
@@ -486,9 +686,71 @@ async function downloadYouTubeMP3(
 }
 
 /*
-===================================
+========================================
+YOUTUBE THUMBNAIL
+========================================
+*/
+
+async function downloadYouTubeThumbnail(
+  chatId,
+  url
+) {
+
+  const wait =
+    await bot.sendMessage(
+      chatId,
+      "⏳ Fetching thumbnail..."
+    );
+
+  exec(
+
+`yt-dlp --get-thumbnail "${url}"`,
+
+    async (err, stdout) => {
+
+      if (err) {
+
+        console.log(err);
+
+        return bot.sendMessage(
+          chatId,
+          "❌ Thumbnail failed"
+        );
+
+      }
+
+      try {
+
+        await bot.sendPhoto(
+          chatId,
+          stdout.trim(),
+          {
+            caption:
+              "🖼 YouTube Thumbnail"
+          }
+        );
+
+      } catch (e) {
+
+        console.log(e);
+
+      }
+
+      bot.deleteMessage(
+        chatId,
+        wait.message_id
+      ).catch(() => {});
+
+    }
+
+  );
+
+}
+
+/*
+========================================
 TIKTOK VIDEO
-===================================
+========================================
 */
 
 async function downloadTikTokVideo(
@@ -515,7 +777,7 @@ async function downloadTikTokVideo(
       data.data.play,
       {
         caption:
-          "✅ TikTok Downloaded"
+          "✅ TikTok Video"
       }
     );
 
@@ -525,7 +787,7 @@ async function downloadTikTokVideo(
 
     bot.sendMessage(
       chatId,
-      "❌ Failed download"
+      "❌ TikTok failed"
     );
 
   }
@@ -538,9 +800,9 @@ async function downloadTikTokVideo(
 }
 
 /*
-===================================
+========================================
 TIKTOK AUDIO
-===================================
+========================================
 */
 
 async function downloadTikTokAudio(
@@ -567,7 +829,7 @@ async function downloadTikTokAudio(
       data.data.music,
       {
         caption:
-          "✅ TikTok Audio Downloaded"
+          "✅ TikTok Audio"
       }
     );
 
@@ -577,7 +839,7 @@ async function downloadTikTokAudio(
 
     bot.sendMessage(
       chatId,
-      "❌ Failed download"
+      "❌ Audio failed"
     );
 
   }
@@ -590,9 +852,61 @@ async function downloadTikTokAudio(
 }
 
 /*
-===================================
+========================================
+TIKTOK IMAGE
+========================================
+*/
+
+async function downloadTikTokImage(
+  chatId,
+  url
+) {
+
+  const wait =
+    await bot.sendMessage(
+      chatId,
+      "⏳ Fetching image..."
+    );
+
+  try {
+
+    const api =
+`https://www.tikwm.com/api/?url=${encodeURIComponent(url)}`;
+
+    const { data } =
+      await axios.get(api);
+
+    await bot.sendPhoto(
+      chatId,
+      data.data.cover,
+      {
+        caption:
+          "🖼 TikTok Cover"
+      }
+    );
+
+  } catch (err) {
+
+    console.log(err);
+
+    bot.sendMessage(
+      chatId,
+      "❌ Image failed"
+    );
+
+  }
+
+  bot.deleteMessage(
+    chatId,
+    wait.message_id
+  ).catch(() => {});
+
+}
+
+/*
+========================================
 PINTEREST
-===================================
+========================================
 */
 
 async function downloadPinterest(
@@ -622,7 +936,7 @@ async function downloadPinterest(
       media,
       {
         caption:
-          "✅ Pinterest Downloaded"
+          "✅ Pinterest Image"
       }
     );
 
@@ -645,9 +959,9 @@ async function downloadPinterest(
 }
 
 /*
-===================================
+========================================
 SPOTIFY
-===================================
+========================================
 */
 
 async function spotifyInfo(
