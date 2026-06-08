@@ -9,7 +9,13 @@ const TelegramBot = require("node-telegram-bot-api");
 const bot = new TelegramBot(
   process.env.BOT_TOKEN,
   {
-    polling: true
+    polling: {
+  autoStart: true,
+  interval: 300,
+  params: {
+    timeout: 10
+  }
+}
   }
 );
 
