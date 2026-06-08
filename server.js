@@ -5,6 +5,25 @@ const path = require("path");
 const axios = require("axios");
 const { exec } = require("child_process");
 const TelegramBot = require("node-telegram-bot-api");
+const express = require("express");
+
+/*
+========================================
+EXPRESS SERVER (must start first for Render)
+========================================
+*/
+
+const app = express();
+
+app.get("/", (req, res) => {
+  res.send("Bot Running ✅");
+});
+
+const PORT = process.env.PORT || 3000;
+
+app.listen(PORT, () => {
+  console.log(`🌐 Server running on port ${PORT}`);
+});
 
 /*
 ========================================
@@ -1015,19 +1034,3 @@ async function spotifyInfo(
   ).catch(() => {});
 
 }
-const express = require("express");
-
-const app = express();
-
-app.get("/", (req, res) => {
-  res.send("Bot Running ✅");
-});
-
-const PORT =
-  process.env.PORT || 3000;
-
-app.listen(PORT, () => {
-  console.log(
-    `🌐 Server running on port ${PORT}`
-  );
-});
