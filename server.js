@@ -6,18 +6,56 @@ const axios = require("axios");
 const { exec } = require("child_process");
 const TelegramBot = require("node-telegram-bot-api");
 
+/*
+===================================
+BOT
+===================================
+*/
+
 const bot = new TelegramBot(
   process.env.BOT_TOKEN,
   {
     polling: {
-  autoStart: true,
-  interval: 300,
-  params: {
-    timeout: 10
-  }
-}
+      autoStart: true,
+      interval: 300,
+      params: {
+        timeout: 10
+      }
+    }
   }
 );
+
+/*
+===================================
+ANTI 409 CONFLICT
+===================================
+*/
+
+process.on("SIGINT", async () => {
+  console.log("Stopping bot...");
+
+  try {
+    await bot.stopPolling();
+  } catch {}
+
+  process.exit(0);
+});
+
+process.on("SIGTERM", async () => {
+  console.log("Stopping bot...");
+
+  try {
+    await bot.stopPolling();
+  } catch {}
+
+  process.exit(0);
+});
+
+/*
+===================================
+FOLDERS
+===================================
+*/
 
 const DOWNLOAD_DIR =
   path.join(__dirname, "downloads");
@@ -87,7 +125,7 @@ bot.on("message", async (msg) => {
       return bot.sendMessage(
         chatId,
 
-        `📺 *YouTube Downloader*
+`📺 *YouTube Downloader*
 
 Choose format 👇`,
 
@@ -132,7 +170,7 @@ Choose format 👇`,
       return bot.sendMessage(
         chatId,
 
-        `🎬 *TikTok Downloader*
+`🎬 *TikTok Downloader*
 
 Choose option 👇`,
 
@@ -144,7 +182,7 @@ Choose option 👇`,
 
               [
                 {
-                  text: "🎥 Video No Watermark",
+                  text: "🎥 No Watermark",
                   callback_data:
                     `tt_video|${text}`
                 }
@@ -152,7 +190,7 @@ Choose option 👇`,
 
               [
                 {
-                  text: "🎵 Audio MP3",
+                  text: "🎵 MP3 Audio",
                   callback_data:
                     `tt_audio|${text}`
                 }
@@ -226,6 +264,10 @@ bot.on("callback_query", async (query) => {
 
   try {
 
+    await bot.answerCallbackQuery(
+      query.id
+    );
+
     const chatId =
       query.message.chat.id;
 
@@ -242,12 +284,10 @@ bot.on("callback_query", async (query) => {
     */
 
     if (action === "yt_mp4") {
-
       return downloadYouTubeVideo(
         chatId,
         url
       );
-
     }
 
     /*
@@ -257,12 +297,10 @@ bot.on("callback_query", async (query) => {
     */
 
     if (action === "yt_mp3") {
-
       return downloadYouTubeMP3(
         chatId,
         url
       );
-
     }
 
     /*
@@ -272,12 +310,10 @@ bot.on("callback_query", async (query) => {
     */
 
     if (action === "tt_video") {
-
       return downloadTikTokVideo(
         chatId,
         url
       );
-
     }
 
     /*
@@ -287,12 +323,10 @@ bot.on("callback_query", async (query) => {
     */
 
     if (action === "tt_audio") {
-
       return downloadTikTokAudio(
         chatId,
         url
       );
-
     }
 
   } catch (err) {
@@ -356,12 +390,14 @@ async function downloadYouTubeVideo(
           }
         );
 
-        fs.unlinkSync(output);
-
       } catch (e) {
 
         console.log(e);
 
+      }
+
+      if (fs.existsSync(output)) {
+        fs.unlinkSync(output);
       }
 
       bot.deleteMessage(
@@ -393,7 +429,7 @@ async function downloadYouTubeMP3(
     );
 
   const file =
-    `${Date.now()}.mp3`;
+    `${Date.now()}.m4a`;
 
   const output =
     path.join(
@@ -424,16 +460,18 @@ async function downloadYouTubeMP3(
           output,
           {
             caption:
-              "✅ MP3 Downloaded"
+              "✅ Audio Downloaded"
           }
         );
-
-        fs.unlinkSync(output);
 
       } catch (e) {
 
         console.log(e);
 
+      }
+
+      if (fs.existsSync(output)) {
+        fs.unlinkSync(output);
       }
 
       bot.deleteMessage(
@@ -529,7 +567,7 @@ async function downloadTikTokAudio(
       data.data.music,
       {
         caption:
-          "✅ TikTok MP3 Downloaded"
+          "✅ TikTok Audio Downloaded"
       }
     );
 
